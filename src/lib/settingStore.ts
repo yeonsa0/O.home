@@ -35,6 +35,7 @@ export const SETTING_KEYS = [
   'ohome.commset.v1', 'ohome.memoset.v1', 'ohome.threadset.v1', 'ohome.trpgset.v1',
   'ohome.relqsets.v1', 'ohome.main.v1', 'ohome.sched.v1', 'ohome.notifset.v1',
   'ohome.membertags.v1', 'ohome.invite.v1', 'ohome.roadnext.v1', 'ohome.repo.v1',
+  'ohome.sections.v1',
 ];
 
 /** 앱 시작 시 1회 — 서버에 저장된 설정을 전부 받아 캐시 */

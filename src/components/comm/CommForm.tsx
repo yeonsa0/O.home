@@ -8,6 +8,7 @@ import { useFonts } from '@/lib/fontStore';
 import { putBlob, useBlobUrl } from '@/lib/blobStore';
 import { KInput, KSelect, KStep, KCheck } from '@/components/ui/Kit';
 import { ColorField } from '@/components/ui/ColorField';
+import { useTheme } from '@/lib/ThemeProvider';
 import { CropEditor, CropValue, CropImg } from '@/components/ui/CropEditor';
 import { DragList } from '@/components/ui/DragList';
 import { Lightbox } from '@/components/ui/Lightbox';
@@ -74,6 +75,9 @@ export function CommForm({ initial, settings, onSave, onCancel }: {
   const [slotUsed, setSlotUsed] = useState(initial?.slotUsed ?? 0);
   const [slotShape, setSlotShape] = useState<SlotShape>(initial?.slotShape ?? 'diamond');
   const [slotColor, setSlotColor] = useState(initial?.slotColor ?? '#a63a45');
+  // 지금 홈페이지의 포인트컬러 — 「포인트컬러」 버튼이 이 값을 넣는다 (v2.0 사용자 요청)
+  const { state: themeState } = useTheme();
+  const accent = themeState.vars.accent;
   const [contactUrl, setContactUrl] = useState(initial?.contactUrl ?? '');
   const [arts, setArts] = useState<ArtItem[]>(() => (initial?.images ?? []).map(r => ({ id: newId(), ref: r })));
   const [thumbCrop, setThumbCrop] = useState<CropValue | undefined>(initial?.thumbCrop);
@@ -295,6 +299,13 @@ export function CommForm({ initial, settings, onSave, onCancel }: {
               </div>
               <span className="cp-lb">채움 색</span>
               <ColorField value={slotColor} onChange={setSlotColor} />
+              {/* 홈페이지 포인트컬러 그대로 가져오기 (v2.0 사용자 요청) — 값을 복사해 넣는다.
+                  연결해 두면 나중에 포인트컬러를 바꿀 때 이미 등록한 커미션까지 따라 바뀌어
+                  「그때 정한 색」이 사라지므로, 지금 색만 가져오고 그 뒤로는 따로 논다 */}
+              <button type="button" className="btn btn-ghost"
+                style={{ padding: '5px 11px', fontSize: 10.5, whiteSpace: 'nowrap' }}
+                data-tip={`홈페이지 포인트컬러(${accent})를 그대로 넣습니다`}
+                onClick={() => setSlotColor(accent)}>포인트컬러</button>
             </div>
           </div>
         </div>

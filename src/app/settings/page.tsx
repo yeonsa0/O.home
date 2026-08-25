@@ -24,10 +24,11 @@ import { useTrpgSettings, DOTORI_STATUS_KEYS, DotoriStatus, dotoriBadgeStyle } f
 import { useMemoSettings } from '@/lib/memoStore';
 import {
   useMenuSettings, MenuSettings, MenuPerm, MenuVis, PLAYLOG_COLS,
-  MenuGroupNode, MenuLeaf, defaultTree, newGroupId, menuLabelFor, extraBoardHref,
+  MenuGroupNode, MenuLeaf, defaultTree, newGroupId, menuLabelFor, extraBoardHref, boardEntries,
   IMG_PROTECT_AREAS,
 } from '@/lib/menuStore';
 import { FEATURES } from '@/lib/menu';
+import { SectionsBlock } from '@/components/settings/SectionList';
 import { useSiteDraft } from '@/lib/siteStore';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useCursorSettings, CursorState, CURSOR_STATE_LABEL } from '@/lib/cursorStore';
@@ -800,6 +801,10 @@ function BoardPane() {
         )} />
       <button className="btn btn-ghost" style={{ marginTop: 8, padding: '7px 14px', fontSize: 11 }}
         onClick={addGalleryCat}>＋ 말머리 추가</button>
+
+      <hr style={{ margin: '24px 0', border: 'none', borderTop: '1.5px solid var(--line)' }} />
+      {/* 갤러리·다이어리 등도 여러 개로 (v2.0 사용자 요청) — 목록이 몇 개인지는 여기 한곳에서 */}
+      <SectionsBlock />
 
       {del.element}
     </div>
@@ -1895,7 +1900,7 @@ function MenuPane() {
   const toast = useToast();
   const del = useConfirmDelete();
   const saved = ms.tree ?? defaultTree();
-  const defLabel = (href: string) => menuLabelFor(href, boards) ?? href;
+  const defLabel = (href: string) => menuLabelFor(href, boardEntries(boards)) ?? href;
 
   // 드래프트 — 모든 편집(삭제 포함)은 SAVE를 눌러야 실제 메뉴에 반영 (v1.9 사용자 피드백)
   const [draft, setDraft] = useState<MenuGroupNode[] | null>(null);
@@ -1953,8 +1958,8 @@ function MenuPane() {
     if (!msLoaded || !bLoaded) return;
     let next: MenuGroupNode[] = saved
       .map(g => (g.href
-        ? (menuLabelFor(g.href, boards) === null ? null : g)
-        : { ...g, items: g.items.filter(it => menuLabelFor(it.href, boards) !== null) }))
+        ? (menuLabelFor(g.href, boardEntries(boards)) === null ? null : g)
+        : { ...g, items: g.items.filter(it => menuLabelFor(it.href, boardEntries(boards)) !== null) }))
       .filter((g): g is MenuGroupNode => !!g);
     const placed = new Set(next.flatMap(g => (g.href ? [g.href] : g.items.map(i => i.href))));
     for (const b of boards) {

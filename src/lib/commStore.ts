@@ -57,6 +57,10 @@ export interface CommItem {
   contactUrl?: string;         // 문의 링크 (편지봉투)
   images: string[];            // blob id 목록 (첫 장 = 대표/썸네일)
   thumbCrop?: CropValue;
+  /** 상세 썸네일 줄에서 각 이미지가 어느 부분을 보여 줄지 (v2.0 사용자 요청 — 우클릭 「썸네일 위치」).
+   *  줄의 칸은 4:3인데 세로로 긴 그림은 가운데가 잘려 얼굴이 안 보이는 일이 많다.
+   *  **이미지 참조를 키로** 둔다 — 순서를 바꿔도 각자 잡아 둔 위치가 그대로 따라간다 */
+  stripCrops?: Record<string, CropValue>;
   ph: string;
   descHtml: string;            // HTML+MD 겸용 에디터 결과 (격리 새니타이즈 렌더)
   titleFontId: string; bodyFontId: string;   // 커미션별 폰트 (4.18 v1.9)

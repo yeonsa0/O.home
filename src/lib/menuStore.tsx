@@ -148,6 +148,15 @@ export function useMenuSettings(): [MenuSettings, (patch: Partial<MenuSettings>)
 /** 게시판 href — 추가 게시판은 /board?b=<id> */
 export const extraBoardHref = (id: string) => `/board?b=${id}`;
 
+/** 메뉴에 얹는 추가 항목 (v2.0) — 게시판뿐 아니라 갤러리·다이어리 등 「여러 개로 만든 섹션」 공통.
+ *  anchor = 이 항목을 어느 기본 메뉴 뒤에 끼울지 (예: /diary 뒤) */
+export interface ExtraEntry { id: string; name: string; href: string; anchor: string }
+
+/** 게시판 목록을 추가 항목 형태로 (기본 게시판은 이미 메뉴에 있으므로 뺀다) */
+export const boardEntries = (boards?: { id: string; name: string }[]): ExtraEntry[] =>
+  (boards ?? []).filter(b => b.id !== 'main')
+    .map(b => ({ id: b.id, name: b.name, href: extraBoardHref(b.id), anchor: '/board' }));
+
 /** 메뉴 관리에서 지정한 페이지 상단 큰 제목 (5.2 v1.9) — 정확히 일치하는 href만, 없으면 null */
 export function pageTitleFor(s: MenuSettings, href: string): string | null {
   for (const g of s.tree ?? []) {
@@ -158,11 +167,11 @@ export function pageTitleFor(s: MenuSettings, href: string): string | null {
 }
 
 /** 기능 href의 기본 이름 — FEATURES + 추가 게시판명 (없으면 null = 사라진 기능) */
-export function menuLabelFor(href: string, extraBoards?: { id: string; name: string }[]): string | null {
+export function menuLabelFor(href: string, extra?: ExtraEntry[]): string | null {
   const f = FEATURES.find(x => x.href === href);
   if (f) return f.label;
-  const b = extraBoards?.find(x => x.id !== 'main' && extraBoardHref(x.id) === href);
-  return b ? b.name : null;
+  const e = extra?.find(x => x.href === href);
+  return e ? e.name : null;
 }
 
 /** 설정을 적용한 실제 메뉴 트리 — 자유 트리(v1.9) 기반.
@@ -170,7 +179,7 @@ export function menuLabelFor(href: string, extraBoards?: { id: string; name: str
  *  viewer: 공개범위 필터(v1.9) — all/member/admin. 없으면 전부 표시(관리 화면용) */
 export function buildMenu(
   s: MenuSettings,
-  extraBoards?: { id: string; name: string }[],
+  extra?: ExtraEntry[],
   viewer?: { loggedIn: boolean; isAdmin: boolean },
 ): MenuItem[] {
   const tree = s.tree ?? defaultTree();
@@ -184,12 +193,12 @@ export function buildMenu(
     .filter(g => canSee(g.vis))
     .map((g): MenuItem | null => {
       if (g.href) {
-        return menuLabelFor(g.href, extraBoards) === null ? null : { label: g.label, href: g.href };
+        return menuLabelFor(g.href, extra) === null ? null : { label: g.label, href: g.href };
       }
       const children = g.items
         .filter(it => canSee(it.vis))
         .map(it => {
-          const def = menuLabelFor(it.href, extraBoards);
+          const def = menuLabelFor(it.href, extra);
           return def === null ? null : { href: it.href, label: it.label ?? def };
         })
         .filter((c): c is { href: string; label: string } => !!c);
@@ -197,14 +206,13 @@ export function buildMenu(
     })
     .filter((m): m is MenuItem => !!m);
 
-  // 새로 만든 게시판 자동 배치 — 트리에 없고 사용자가 뺀 적도 없으면 /board가 든 그룹 뒤에
-  for (const b of extraBoards ?? []) {
-    if (b.id === 'main') continue;
-    const href = extraBoardHref(b.id);
+  // 새로 만든 섹션 자동 배치 — 트리에 없고 사용자가 뺀 적도 없으면 원래 메뉴(anchor) 뒤에
+  for (const b of extra ?? []) {
+    const href = b.href;
     if (placed.has(href) || s.removedBoards.includes(href)) continue;
-    const host = menu.find(m => m.children?.some(c => c.href === '/board'));
+    const host = menu.find(m => m.children?.some(c => c.href === b.anchor));
     if (host?.children) {
-      const at = host.children.findIndex(c => c.href === '/board');
+      const at = host.children.findIndex(c => c.href === b.anchor);
       host.children.splice(at + 1, 0, { href, label: b.name });
     } else {
       menu.push({ label: b.name, href });

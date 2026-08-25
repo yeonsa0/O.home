@@ -4,7 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { WidgetConf, useMainStore, WIDGET_META, decoSlides } from '@/lib/mainStore';
 import { useAuth } from '@/lib/auth';
-import { useMenuSettings, buildMenu } from '@/lib/menuStore';
+import { boardEntries, useMenuSettings, buildMenu } from '@/lib/menuStore';
 import { useBoards } from '@/lib/boardStore';
 import { Modal } from '@/components/ui/Modal';
 import { KTextarea, KSelect, KStep, KCheck } from '@/components/ui/Kit';
@@ -19,6 +19,9 @@ import { useSched, eventColor } from '@/lib/schedStore';
 import { StickyMemo, MEMO_SEED, MEMO_SIZE_W, useMemoSettings } from '@/lib/memoStore';
 import { BlobImg, useBlobUrl } from '@/lib/blobStore';
 import { normalizeInternalLink } from '@/lib/link';
+import {
+  Applicant, APPLY_SEED, useCommSettings, badgeStyle, maskName, inTrash,
+} from '@/lib/commStore';
 
 /* 편집모드 우클릭 「설정」 → 해당 위젯의 설정 모달 열기 (v1.9 사용자 확정 — 이벤트로 연결) */
 function useEditEvent(id: string, onOpen: () => void) {
@@ -104,7 +107,7 @@ export function MenuListWidget() {
   const { user: wUser, isAdmin: wIsAdmin } = useAuth(); // 공개범위 필터 (v1.9)
   return (
     <div className="panel menu-list wgt-menu">
-      {(menuLoaded && boardsLoaded ? buildMenu(menuSet, boards, { loggedIn: !!wUser, isAdmin: wIsAdmin }) : []).map(m =>
+      {(menuLoaded && boardsLoaded ? buildMenu(menuSet, boardEntries(boards), { loggedIn: !!wUser, isAdmin: wIsAdmin }) : []).map(m =>
         m.children ? (
           <div key={m.label} className={`mgrp ${open === m.label ? 'open' : ''}`}>
             <a onClick={() => setOpen(o => (o === m.label ? null : m.label))}>{m.label}</a>
@@ -502,6 +505,69 @@ export function MemoBoardWidget() {
   );
 }
 
+/* ---------- 커미션 신청자 (v2.0 사용자 요청) ----------
+   다가오는 마감이 빠른 순으로. 몇 명까지 볼지는 설정에서 (기본 5명).
+   이름은 신청자 리스트와 **같은 규칙**으로 가린다 — 관리자만 전체, 나머지는 앞 몇 글자만.
+   마감이 없는 신청은 「다가오는 마감」이 아니므로 넣지 않는다. 지난 마감도 뺀다. */
+export function ApplyWidget({ conf }: { conf: WidgetConf }) {
+  const router = useRouter();
+  const { isAdmin } = useAuth();
+  const { editOn, updateWidget } = useMainStore();
+  const [settings] = useCommSettings();
+  const [apps] = useLocalList<Applicant>('ohome.commapply.v1', APPLY_SEED);
+  const [open, setOpen] = useState(false);
+  useEditEvent(conf.id, () => setOpen(true));
+
+  const max = Math.max(1, Math.min(20, (conf.settings.count as number) ?? 5));
+  const today = new Date();
+  const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  const shown = apps
+    .filter(a => !inTrash(a) && !!a.deadline && a.deadline >= todayStr)
+    .sort((a, b) => (a.deadline ?? '').localeCompare(b.deadline ?? ''))
+    .slice(0, max);
+
+  /** 남은 날 — 오늘이면 D-DAY */
+  const dleft = (d: string) => {
+    const ms = Date.parse(`${d}T00:00:00`) - Date.parse(`${todayStr}T00:00:00`);
+    const n = Math.round(ms / 86400000);
+    return n === 0 ? 'D-DAY' : `D-${n}`;
+  };
+
+  return (
+    /* 누르면 관리자든 아니든 신청자 페이지로 간다 (v2.0 사용자 요청).
+       설정은 편집모드에서 우클릭 > 설정으로만 — 목록을 보러 눌렀는데 관리 창이 뜨면 안 된다 */
+    <div className="panel widget" style={{ cursor: 'var(--cur-pointer,pointer)' }}
+      onClick={e => {
+        if ((e.target as HTMLElement).closest('.modal-ov')) return;
+        if (editOn) return;   // 편집모드에서는 배치·우클릭 메뉴가 우선
+        router.push('/comm-apply');
+      }}>
+      <h4>COMMISSION <span className="more" onClick={e => { e.stopPropagation(); router.push('/comm-apply'); }}>전체 ›</span></h4>
+      {shown.map(a => {
+        const badge = settings.applyBadges.find(b => b.id === a.badgeId);
+        return (
+          <div className="apply-row" key={a.id}>
+            <b>{dleft(a.deadline!)}</b>
+            <span>{isAdmin ? a.name : maskName(a.name, a.nameOpen ?? 1)}</span>
+            {badge && <i style={badgeStyle(badge, settings.badgeShape)}>{badge.label}</i>}
+          </div>
+        );
+      })}
+      {shown.length === 0 && <p className="hint">다가오는 마감이 없습니다</p>}
+
+      <Modal open={open} onClose={() => setOpen(false)} small title="커미션 신청자 위젯"
+        desc="마감이 가까운 순으로 보여 줍니다 — 마감일이 없거나 지난 신청은 빼고 셉니다"
+        actions={<button className="btn btn-dark" onClick={() => setOpen(false)}>확인</button>}>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+          <span className="cp-lb">몇 명까지</span>
+          <KStep value={(conf.settings.count as number) ?? 5} min={1} max={20} suffix="명"
+            onChange={v => updateWidget(conf.id, { settings: { ...conf.settings, count: v } }, { persist: true })} />
+        </div>
+      </Modal>
+    </div>
+  );
+}
+
 /* ---------- 타입 → 렌더러 ---------- */
 export function renderWidget(conf: WidgetConf) {
   switch (conf.type) {
@@ -516,6 +582,7 @@ export function renderWidget(conf: WidgetConf) {
     case 'freetext': return <FreeTextWidget conf={conf} />;
     case 'deco': return <DecoWidget conf={conf} />;
     case 'memoboard': return <MemoBoardWidget />;
+    case 'apply': return <ApplyWidget conf={conf} />;
     default: return <div className="panel widget"><h4>{WIDGET_META[conf.type]?.title ?? conf.type}</h4></div>;
   }
 }

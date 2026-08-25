@@ -9,6 +9,7 @@ import {
 } from '@/lib/commStore';
 import { sanitizeHtml } from '@/lib/sanitize';
 import { getBlob } from '@/lib/blobStore';
+import { HtmlBody } from '@/components/ui/HtmlBody';
 import { ConfirmModal } from '@/components/ui/Modal';
 import { PageTitle, EditableDesc } from '@/components/ui/PageText';
 
@@ -109,7 +110,7 @@ export default function ApplicantDetailPage() {
         <div style={{ paddingTop: 16 }}>
           {canSee ? (
             a.content
-              ? <div className="post-body" style={{ fontSize: 13 }} dangerouslySetInnerHTML={{ __html: html }} />
+              ? <HtmlBody className="post-body" style={{ fontSize: 13 }} html={html} />
               : <p className="hint">내용이 비어 있습니다</p>
           ) : (
             <p className="hint" style={{ textAlign: 'center', padding: '14px 0' }}>

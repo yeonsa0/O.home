@@ -199,7 +199,10 @@ a{color:inherit;text-decoration:none}
 /* 하단 여백은 BGM 미니 플레이어(약 73px)를 가리지 않는 최소치 — 과하면 불필요한 스크롤 발생 */
 .page{max-width:1180px;margin:0 auto;padding:16px 28px 80px;animation:fade .35s}
 @keyframes fade{from{opacity:0;transform:translateY(8px)}to{opacity:1}}
-.page-head{position:relative;color:#eceef1;margin-bottom:16px;display:grid;grid-template-columns:1fr auto;align-items:end;column-gap:20px}
+/* min-height: 우측 액션은 절대배치라 헤더 높이에 안 잡힌다 — 헤더가 짧아지면(설명 숨김·제목 숨김
+   ·상세처럼 제목을 0높이로 둔 경우) 액션이 위로 삐져나가 상단 메뉴에 잘려 들어간다 (v2.0 사용자 발견).
+   한 줄짜리 액션이 들어갈 만큼은 늘 자리를 갖게 한다 (제목이 보이는 페이지는 이미 더 높아 변화 없음) */
+.page-head{position:relative;color:#eceef1;margin-bottom:16px;min-height:calc(38px*var(--fs,1));display:grid;grid-template-columns:1fr auto;align-items:end;column-gap:20px}
 /* 메뉴 타이틀 — 별도 역할(기본은 타이틀 폰트·크기를 따름, 크기는 두 배율 곱)
    클릭 시 해당 메뉴 초기 페이지로 이동 — 텍스트 커서/드래그 선택 금지 */
 .page-head h1{--fs:calc(var(--fs-pagetitle,1)*var(--fs-title,1));font-family:var(--font-pagetitle,var(--serif));font-size:calc(30px*var(--fs,1));font-weight:var(--fw-pagetitle,var(--fw-title,600));letter-spacing:.14em;grid-column:1;color:var(--page-title);cursor:var(--cur-pointer,pointer);user-select:none;transition:opacity .15s;display:var(--ph-title,block)} /* 헤더 표시 옵션 (v1.9) */
@@ -224,6 +227,15 @@ a{color:inherit;text-decoration:none}
 /* 우측 액션(검색·등록·슬롯)은 절대배치 — 높이가 커도 제목·설명 줄 간격을 벌리지 않음
    (커미션처럼 액션이 2단이면 설명 윗여백이 다른 메뉴보다 넓어지던 문제, v1.9 사용자 발견) */
 .head-actions{position:absolute;right:0;bottom:0;display:flex;gap:8px;align-items:center}
+/* 2단 액션(커미션의 슬롯+검색·등록)은 헤더보다 키가 크다. 아래에 붙여 두면 설명 문구를 끈 순간
+   헤더가 짧아지면서 위로 삐져나간다 — 슬롯이 상단 메뉴까지 올라갔다 (v2.0 사용자 발견).
+   위에 붙여 제목과 나란히 두고 아래로 자라게 한다: 설명이 있든 없든 슬롯 자리가 그대로다 */
+.head-actions.stack{top:0;bottom:auto;flex-direction:column;align-items:flex-end;gap:10px}
+/* 2단 액션은 헤더보다 키가 커서 아래로 자란다 — 그만큼 헤더가 자리를 갖지 않으면
+   검색·등록 버튼이 아래 리스트와 겹친다 (v2.0 사용자 발견) */
+/* 액션을 위에 붙였으므로 제목도 위에 맞춘다 — 아래 정렬로 두면 설명을 끈 순간
+   제목만 아래로 내려가 슬롯과 어긋난다 */
+.page-head.head-stack{min-height:calc(80px*var(--fs,1));align-items:start}
 
 /* 게시판 공통 검색 (6.4) — 접힘형, 세로 35px 통일 */
 /* 검색창 — 테마 토큰 (환경설정 > 디자인 「검색창」에서 색 지정, 라이트/다크 자동 연동) */
@@ -818,6 +830,12 @@ body.edit-on .main-grid{grid-template-columns:230px 1fr 260px}
 .main-grid .g2{align-items:start}
 .dday-row{display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px dashed var(--line);font-size:calc(12.5px*var(--fs,1))}
 .dday-row:last-child{border:none}
+/* 커미션 신청자 위젯 (v2.0 사용자 요청) — D-day 줄과 같은 결, 오른쪽에 상태 뱃지 */
+.apply-row{display:flex;align-items:center;gap:9px;padding:7px 0;border-bottom:1px dashed var(--line);font-size:calc(12.5px*var(--fs,1));line-height:calc(18px*var(--fs,1))}
+.apply-row:last-of-type{border-bottom:none}
+.apply-row b{font-family:var(--serif);font-size:calc(13.5px*var(--fs,1));letter-spacing:.05em;flex-shrink:0;min-width:44px}
+.apply-row span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.apply-row i{font-style:normal;flex-shrink:0;font-size:calc(9.5px*var(--fs,1))}
 .dday-row b{font-family:var(--serif);font-size:calc(15px*var(--fs,1));letter-spacing:.05em}
 .dday-row .d-red{color:var(--accent)}
 .todo-row{display:flex;align-items:center;gap:9px;padding:6px 0;font-size:calc(12.5px*var(--fs,1))}
@@ -1497,6 +1515,10 @@ body.edit-on .main-grid.gridlines .wgt{outline-offset:0}
    보이지 않는 공백을 하나 넣어 한 줄만큼의 자리를 만든다 */
 .post-body p:empty::before{content:"\00a0"}
 .post-body img{max-width:100%;border-radius:9px}
+/* 본문 안 이미지 — 눌러서 크게 볼 수 있다는 걸 커서로 알린다 (v2.0 사용자 요청).
+   링크로 감싼 이미지는 그 링크가 할 일이 따로 있으므로 제외 */
+.html-body img{cursor:zoom-in}
+.html-body a img{cursor:inherit}
 .post-body a{color:var(--accent);text-decoration:underline}
 .post-body blockquote{border-left:3px solid var(--line);padding:2px 14px;color:var(--sub);margin:10px 0}
 .post-body pre{background:#f0f1f3;border-radius:9px;padding:12px 14px;font-size:calc(12px*var(--fs,1));overflow-x:auto;margin:10px 0}

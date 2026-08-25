@@ -1,10 +1,22 @@
 'use client';
 // 리치 텍스트 에디터 (TipTap) — 프로필 탭 등 HTML 콘텐츠 작성용
 // 자체 스타일 툴바 (7장 — 기본 UI 금지) · 출력은 HTML, 저장 시 새니타이즈는 렌더 쪽에서 (6.3)
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Image from '@tiptap/extension-image';
+import { putBlob } from '@/lib/blobStore';
+import { useToast } from '@/components/ui/Toast';
+
+/** 로컬 모드용 — 파일을 그대로 본문에 심는다 (서버가 없어 올릴 곳이 없을 때) */
+function toDataUrl(f: File): Promise<string> {
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(String(r.result));
+    r.onerror = () => rej(r.error);
+    r.readAsDataURL(f);
+  });
+}
 
 function TBtn({ on, label, title, onClick }: { on?: boolean; label: React.ReactNode; title: string; onClick: () => void }) {
   return (
@@ -20,6 +32,9 @@ export function RichEditor({ value, onChange, placeholder }: {
   onChange: (html: string) => void;
   placeholder?: string;
 }) {
+  const toast = useToast();
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
   const editor = useEditor({
     extensions: [StarterKit, Image],
     content: value || '<p></p>',
@@ -40,9 +55,22 @@ export function RichEditor({ value, onChange, placeholder }: {
 
   if (!editor) return <div className="re-wrap" style={{ minHeight: 200 }} />;
 
-  const addImage = () => {
-    const url = window.prompt('이미지 URL을 입력하세요');
-    if (url) editor.chain().focus().setImage({ src: url }).run();
+  /* 이미지는 **올려서** 넣는다 (v2.0 사용자 요청 — 예전엔 URL을 직접 적게 했다).
+     다른 이미지들과 같은 경로(putBlob)를 타므로 서버 모드면 저장소에 올라가고 공개 주소가 나온다.
+     서버가 없는 로컬 모드에서는 그 주소가 이 브라우저 안에서만 뜻이 있는 파일 id라
+     <img>가 읽지 못한다 — 그때만 본문에 그대로 심는다(개발·오프라인용). */
+  const insertImage = async (f?: File) => {
+    if (!f) return;
+    setBusy(true);
+    try {
+      const ref = await putBlob(f);
+      const src = /^https?:/.test(ref) ? ref : await toDataUrl(f);
+      editor.chain().focus().setImage({ src }).run();
+    } catch (e) {
+      // 조용히 실패하면 「올렸는데 왜 안 들어가지」가 된다 — 사유를 그대로 보여 준다
+      toast(`이미지를 올리지 못했습니다 — ${e instanceof Error ? e.message : String(e)}`);
+    }
+    setBusy(false);
   };
 
   return (
@@ -68,7 +96,10 @@ export function RichEditor({ value, onChange, placeholder }: {
           onClick={() => editor.chain().focus().toggleBlockquote().run()} />
         <TBtn title="구분선" label="—" onClick={() => editor.chain().focus().setHorizontalRule().run()} />
         <span className="re-sep" />
-        <TBtn title="이미지 삽입 (URL)" label="🖼" onClick={addImage} />
+        <TBtn title={busy ? '올리는 중…' : '이미지 올리기'} label={busy ? '⏳' : '🖼'}
+          onClick={() => { if (!busy) fileRef.current?.click(); }} />
+        <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }}
+          onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; void insertImage(f); }} />
         {/* 실행 취소·다시 실행은 모바일에서 숨김 — 툴바가 두 줄로 넘어가 본문 영역을 침범 (v1.9 사용자 확정)
             (단축키 Ctrl+Z / Ctrl+Shift+Z는 그대로 동작) */}
         <span className="re-sep re-hide-m" />

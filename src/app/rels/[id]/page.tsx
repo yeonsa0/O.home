@@ -515,6 +515,24 @@ export default function RelDetailPage() {
     toast('다음 질문이 출제되었습니다');
   };
 
+  /* 질문 지우기 — 이미 나온 질문을 **대기 리스트로 되돌린다** (v2.0 사용자 요청).
+     건너뛰기와 다른 점: 버리는 게 아니라 풀로 돌아가므로 **나중에 다시 나올 수 있다**.
+     다음 질문을 자동으로 뽑지도 않는다 — 「지금은 이 질문 말고」라는 뜻이라 고르는 건 사용자 몫. */
+  const returnQuestion = (cur: QaEntry) => {
+    const n = answersOf(cur.no).length;
+    del.ask('이 질문을 리스트로 되돌리시겠습니까?', () => {
+      const rest = auQuestions.filter(q => q.no !== cur.no);
+      patchAuData({ questions: rest, qaPool: [...auQaPool, cur.q], qaEnabled: true });
+      // 답변은 질문에 딸린 것이라 함께 정리한다 (주인 없는 답이 남지 않게)
+      setQaRows(qaRows.filter(r => !(r.relId === rel.id && r.auId === (au?.id ?? 'base') && r.no === cur.no)));
+      setQaNo(rest[0]?.no ?? null);
+      toast('질문을 리스트로 되돌렸습니다 — 다시 나올 수 있습니다');
+    }, n > 0
+      ? `이미 달린 답변 ${n}개는 함께 사라집니다. 질문은 대기 리스트로 돌아가 다시 나올 수 있습니다.`
+      : '질문이 대기 리스트로 돌아가 다시 나올 수 있습니다.',
+    '되돌리기');
+  };
+
   /* 질문 건너뛰기 (v2.0 사용자 요청) — 마음에 안 드는 질문을 아예 버린다.
      대기 풀로 되돌리지 않으므로 다시 나오지 않는다. 이어서 다음 질문을 출제. */
   const skipQuestion = () => {
@@ -937,10 +955,10 @@ export default function RelDetailPage() {
                 ? <button className="btn btn-dark" style={{ height: 35, padding: '0 14px', fontSize: 11.5 }} onClick={() => setTlOpen(true)}>＋ ADD RECORD</button>
                 : <>
                   <button className="btn btn-ghost" style={{ height: 35, padding: '0 14px', fontSize: 11.5 }} onClick={() => setQsetOpen(true)}>＋ 질문 리스트</button>
-                  {/* 마음에 안 드는 질문은 아예 버린다 — 대기 풀로 돌아가지 않는다 (v2.0) */}
+                  {/* 되돌리기는 오른쪽 질문 리스트에서 우클릭 (v2.0 사용자 요청) — 여기엔 건너뛰기만 */}
                   {curQa && (
                     <button className="btn btn-ghost" style={{ height: 35, padding: '0 14px', fontSize: 11.5 }}
-                      data-tip="이 질문을 버리고 다음 질문으로"
+                      data-tip="이 질문을 아주 버리고 다음 질문으로 — 다시 나오지 않음 (되돌리려면 오른쪽 리스트에서 우클릭)"
                       onClick={skipQuestion}>질문 건너뛰기</button>
                   )}
                   {/* 대기 풀에서 랜덤 출제 (v1.9) — 리스트를 넣어도 자동 출제되지 않으므로(v2.0)
@@ -1092,7 +1110,11 @@ export default function RelDetailPage() {
               </div>
               <div className="qa-scroll">
                 {qaFiltered.map(q => (
-                  <div key={q.no} className={`qa-item ${curQa?.no === q.no ? 'on' : ''}`} onClick={() => setQaNo(q.no)}>
+                  /* 우클릭 — 이 질문을 대기 리스트로 되돌린다 (v2.0 사용자 요청).
+                     지금 보고 있는 질문이 아니어도 리스트에서 바로 고를 수 있다 */
+                  <div key={q.no} className={`qa-item ${curQa?.no === q.no ? 'on' : ''}`} onClick={() => setQaNo(q.no)}
+                    data-tip={isAdmin ? '우클릭 — 리스트로 되돌리기' : undefined}
+                    onContextMenu={e => { if (!isAdmin) return; e.preventDefault(); returnQuestion(q); }}>
                     <b>Q.{String(q.no).padStart(3, '0')} {q.q}</b>
                     <small>{q.date.slice(5).replace('-', '.')} · 답변 {answersOf(q.no).length}</small>
                   </div>
