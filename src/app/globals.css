@@ -1720,4 +1720,7 @@ body.edit-on .main-grid.gridlines .wgt{outline-offset:0}
   height: 100% !important;
   object-fit: contain !important;
   transform: translate(-50%, -50%) !important;
+  left: unset !important;
+  top: unset !important;
+  transform: unset !important;
 }
