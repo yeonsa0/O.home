@@ -159,7 +159,7 @@ function CharDetailInner() {
             <small>원본</small>
           </div>
           {charAus.map(a => {
-            const av = charWithAu(ch, a.key);   // AU 저장분 반영된 썸네일 (없으면 base)
+            const av = charWithAu(ch, a.key);   // 이 AU에 넣은 썸네일 (안 넣었으면 색 플레이스홀더, v2.0)
             return (
               <div key={a.key} className={`au-item ${auKey === a.key ? 'on' : ''} ph ${ch.thumbClass}`}
                 style={{ borderColor: auKey === a.key ? 'var(--accent)' : 'var(--line)' }}

@@ -108,6 +108,43 @@ async function putBlobRaw(blob: Blob): Promise<string> {
   return id;
 }
 
+/** promoteToStorage의 결과 — 안 됐으면 **왜** 안 됐는지까지 알려 준다.
+ *  조용히 실패하면 사용자는 「올렸는데 왜 안 보이지」에서 막힌다 (v2.0 사용자 지적). */
+export type PromoteResult =
+  | { kind: 'already' }                 // 이미 저장소 주소 — 할 일 없음
+  | { kind: 'local-mode' }              // 서버 연결이 없다 — 올릴 곳 자체가 없음
+  | { kind: 'no-origin' }               // 이 브라우저에 원본이 없다 (다른 브라우저에서 올린 것)
+  | { kind: 'uploaded'; url: string }
+  | { kind: 'failed'; error: string };
+
+/**
+ * 브라우저에만 있는 파일을 서버 저장소로 올려 준다 (v2.0 사용자 발견).
+ *
+ * 백엔드를 붙이기 전에 저장한 이미지는 참조가 IndexedDB 파일 id라, 올린 그 브라우저에서만
+ * 보이고 다른 데서 로그인하면 안 보인다. 원본이 이 브라우저에 아직 있으면 저장소로 올린다.
+ *
+ * putBlob이 내용 해시로 걸러 주므로 여러 번 불려도 같은 파일이 두 번 올라가지 않는다.
+ */
+export async function promoteToStorage(ref?: string): Promise<PromoteResult> {
+  if (!ref || /^(https?:|data:)/.test(ref)) return { kind: 'already' };
+  if (!isServerMode()) return { kind: 'local-mode' };
+  // blob: 은 새로고침하면 죽는 참조 — 원본을 되찾을 방법이 없다
+  if (ref.startsWith('blob:')) return { kind: 'no-origin' };
+  let blob: Blob | null = null;
+  try {
+    blob = await getBlob(ref);
+  } catch (e) {
+    return { kind: 'failed', error: e instanceof Error ? e.message : String(e) };
+  }
+  if (!blob) return { kind: 'no-origin' };
+  try {
+    const url = await putBlob(blob);
+    return url === ref ? { kind: 'already' } : { kind: 'uploaded', url };
+  } catch (e) {
+    return { kind: 'failed', error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
 /** 전체 파일 목록 (id → Blob) — 데이터 백업 내보내기용 (5.2) */
 export async function allBlobs(): Promise<Map<string, Blob>> {
   const db = await openDb();

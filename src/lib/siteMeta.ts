@@ -10,7 +10,11 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 
-export interface SiteMeta { title: string; subtitle?: string; crawlDesc?: string }
+export interface SiteMeta { title: string; subtitle?: string; crawlDesc?: string; favicon?: string }
+
+/** 탭 아이콘은 **저장소 주소일 때만** 서버가 쓸 수 있다 —
+ *  로컬 모드의 파일 id는 그 브라우저 안에서만 뜻이 있어 서버가 알 수 없다 (DocIcon이 화면에서 붙인다) */
+const httpOnly = (v?: string) => (v && /^https?:\/\//.test(v) ? v : undefined);
 
 const SETTING_KEY = 'ohome.site.v1';
 const FALLBACK: SiteMeta = { title: 'O.HOME' };
@@ -50,8 +54,12 @@ function fromFirestore(doc: unknown): SiteMeta | null {
   const docTitle = m?.docTitle?.stringValue;
   const subtitle = m?.subtitle?.stringValue;
   const crawlDesc = m?.crawlDesc?.stringValue;
+  const favicon = httpOnly(m?.favicon?.stringValue);
+  // 제목을 안 정했어도 설명·아이콘은 살린다 — 예전엔 제목이 비면 통째로 버려서,
+  // 크롤링 문구만 적어 둔 경우 그 문구가 조용히 무시됐다 (v2.0)
   const t = (docTitle || '').trim() || (title ? `${title} — 개인홈` : '');
-  return t ? { title: t, subtitle, crawlDesc } : null;
+  if (!t && !crawlDesc && !subtitle && !favicon) return null;
+  return { title: t || FALLBACK.title, subtitle, crawlDesc, favicon };
 }
 
 /**
@@ -76,10 +84,13 @@ export async function siteMeta(): Promise<SiteMeta> {
       next: { revalidate: 300 },
     });
     if (!res.ok) return FALLBACK;
-    const rows = await res.json() as { value?: { title?: string; docTitle?: string; subtitle?: string; crawlDesc?: string } }[];
+    const rows = await res.json() as
+      { value?: { title?: string; docTitle?: string; subtitle?: string; crawlDesc?: string; favicon?: string } }[];
     const v = rows?.[0]?.value;
+    // 제목을 안 정했어도 설명·아이콘은 살린다 (위 Firestore 쪽과 같은 이유)
     const t = (v?.docTitle || '').trim() || (v?.title ? `${v.title} — 개인홈` : '');
-    return t ? { title: t, subtitle: v?.subtitle, crawlDesc: v?.crawlDesc } : FALLBACK;
+    const favicon = httpOnly(v?.favicon);
+    return { title: t || FALLBACK.title, subtitle: v?.subtitle, crawlDesc: v?.crawlDesc, favicon };
   } catch {
     return FALLBACK;   // 네트워크·권한 문제면 기본 제목으로
   }

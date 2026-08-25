@@ -7,6 +7,10 @@ import { isServerMode } from './supabase';
 import { TABLE_OF, fetchList, syncList, subscribeTable } from './db';
 import { currentUserId } from './currentUser';
 
+/** 목록 저장 실패 알림 (v2.0) — 조용히 되돌리면 "쓴 게 바로 지워진다"로만 보여 원인을 알 수 없다.
+ *  ListSync가 받아 화면에 띄운다 (설정 저장 실패 알림과 같은 방식) */
+export const LIST_ERR_EVT = 'ohome-list-error';
+
 export interface Comment {
   id: string;
   author: string;
@@ -15,6 +19,36 @@ export interface Comment {
   date: string;          // ISO
   parentId?: string;     // 대댓글
   guestPw?: string;      // 게스트 본인 수정·삭제용 (mock — 실서비스는 서버 해시)
+}
+
+/**
+ * 댓글 한 줄 = 자기 문서 하나 (v2.0).
+ *
+ * 예전에는 댓글이 글(Post·RoadItem) 안 배열에 들어 있었다. 그래서 **댓글을 달려면 그 글을
+ * UPDATE 해야 했고**, 보안 규칙의 「글 수정은 작성자 또는 관리자만」에 걸려 일반 회원이
+ * 관리자 글에 댓글을 달면 서버가 거부했다 — 화면에는 잠깐 보였다가 서버 값으로 되돌아와
+ * "댓글이 바로 지워지는" 것처럼 보였다 (포크 사용자 제보로 확인).
+ *
+ * 댓글을 별도 컬렉션으로 빼면 글을 건드릴 필요가 없고, 각 댓글이 자기 authorId를 가지므로
+ * 「내가 쓴 댓글은 내가 수정·삭제」가 규칙 그대로 성립한다.
+ */
+export const COMMENT_KEY = 'ohome.comments.v1';
+
+export interface CommentRow extends Comment {
+  targetId: string;                 // 달린 대상(글·로드뷰 항목)의 id
+  target: 'post' | 'road';          // 대상 종류 — 같은 컬렉션을 나눠 쓴다
+}
+
+export const COMMENT_SEED: CommentRow[] = [];
+
+/** 대상 하나의 댓글 — 분리 저장분 + 옛 글 안에 남아 있던 것(legacy)을 합쳐 시간순으로 */
+export function commentsFor(
+  rows: CommentRow[], target: 'post' | 'road', targetId: string, legacy: Comment[] = [],
+): Comment[] {
+  const mine = rows.filter(r => r.target === target && r.targetId === targetId);
+  const seen = new Set(mine.map(r => r.id));
+  return [...legacy.filter(c => !seen.has(c.id)), ...mine]
+    .sort((a, b) => a.date.localeCompare(b.date));
 }
 
 export type FoldType = 'spoiler' | 'adult' | 'custom';
@@ -117,8 +151,14 @@ export function useLocalList<T extends { id?: string }>(key: string, seed: T[]):
     if (server) {
       syncList(table, prev as unknown as { id: string }[], next as unknown as { id: string }[], currentUserId())
         .catch(err => {
-          // 실패하면 서버 상태로 되돌려 화면과 DB가 어긋난 채로 남지 않게
+          // 실패하면 서버 상태로 되돌려 화면과 DB가 어긋난 채로 남지 않게 —
+          // 되돌리기만 하면 "방금 쓴 게 스스로 사라지는" 것처럼 보이므로 이유도 함께 알린다 (v2.0)
           console.error('[ohome] 저장 실패', err);
+          try {
+            window.dispatchEvent(new CustomEvent(LIST_ERR_EVT, {
+              detail: { table, message: err instanceof Error ? err.message : String(err) },
+            }));
+          } catch { /* 무시 */ }
           reqId.current = id;   // 이 복구 fetch는 유효한 최신 요청으로 인정
           fetchList<T & { id: string }>(table)
             .then(rows => { if (id === reqId.current) { setList(rows); latest.current = rows; } })

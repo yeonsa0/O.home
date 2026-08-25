@@ -5,7 +5,10 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useAuth, mockMemberInfo, User } from '@/lib/auth';
-import { useLocalList, BOARD_SEED, GUEST_SEED, Post, GuestEntry, fmtDate } from '@/lib/postStore';
+import {
+  useLocalList, BOARD_SEED, GUEST_SEED, Post, GuestEntry, fmtDate,
+  CommentRow, COMMENT_KEY, COMMENT_SEED,
+} from '@/lib/postStore';
 import { Character, CHAR_SEED, charGrant } from '@/lib/charStore';
 import { RoadItem, ROAD_SEED } from '@/lib/galleryStore';
 import { useBoards } from '@/lib/boardStore';
@@ -27,6 +30,8 @@ export default function MemberDetailPage() {
   const [posts] = useLocalList<Post>('ohome.board.v1', BOARD_SEED);
   const [roads] = useLocalList<RoadItem>('ohome.road.v1', ROAD_SEED);
   const [guestEntries] = useLocalList<GuestEntry>('ohome.guest.v1', GUEST_SEED);
+  // 댓글은 글과 따로 저장된다 (v2.0)
+  const [cmtRows] = useLocalList<CommentRow>(COMMENT_KEY, COMMENT_SEED);
   const [chars] = useLocalList<Character>('ohome.chars.v1', CHAR_SEED);
   const { boards } = useBoards();
   const members = useMembers();
@@ -68,7 +73,7 @@ export default function MemberDetailPage() {
     .map(c => ({ c, level: charGrant(c, member.id) }))
     .filter((x): x is { c: Character; level: 'play' | 'edit' } => x.level !== null);
 
-  const items = collectMyItems(member.id, posts, roads, guestEntries, boards);
+  const items = collectMyItems(member.id, posts, roads, guestEntries, boards, cmtRows);
   const pageItems = items.slice((page - 1) * PER, page * PER);
 
   return (

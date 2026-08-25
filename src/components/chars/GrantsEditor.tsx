@@ -9,7 +9,7 @@ import { useMembers } from '@/lib/members';
 import { KInput } from '@/components/ui/Kit';
 import { useConfirmDelete } from '@/components/ui/Modal';
 
-// 드롭다운 예상 높이 — 위/아래 자동 판정용 (maxHeight 180 + 패딩)
+// 드롭다운 최대 높이 — 아래 공간이 이만큼 없으면 위로 띄운다 (maxHeight 180 + 패딩)
 const POP_H = 192;
 
 export function GrantsEditor({ value, onChange }: {
@@ -21,14 +21,20 @@ export function GrantsEditor({ value, onChange }: {
   const [q, setQ] = useState('');
   // 드롭다운은 body 포털(fixed) — 카드 overflow에 잘리지 않고, 아래 공간이 없으면 위로 (v1.9 수정)
   const wrapRef = useRef<HTMLDivElement>(null);
-  const [pos, setPos] = useState<{ left: number; top: number; width: number } | null>(null);
+  // 위로 띄울 때는 top을 계산하지 않고 bottom으로 고정한다 (v2.0 사용자 지적).
+  // 예전엔 "입력칸 위 192px"이라는 고정 추정값에 top을 맞춰서, 결과가 한두 개뿐이면
+  // 목록이 입력칸에서 멀찍이 떨어진 채 위쪽부터 쌓인 것처럼 보였다.
+  // bottom을 입력칸 바로 위에 붙이면 항목 수와 무관하게 아래에서 위로 자란다.
+  const [pos, setPos] = useState<{ left: number; width: number; top?: number; bottom?: number } | null>(null);
   const openAt = () => {
     const r = wrapRef.current?.getBoundingClientRect();
     if (!r) return;
-    const top = window.innerHeight - r.bottom < POP_H + 10
-      ? Math.max(8, r.top - POP_H - 4)   // 아래 공간 부족 — 위로
-      : r.bottom + 4;
-    setPos({ left: r.left, top, width: r.width });
+    const up = window.innerHeight - r.bottom < POP_H + 10;   // 아래 공간 부족 — 위로
+    setPos({
+      left: r.left,
+      width: r.width,
+      ...(up ? { bottom: window.innerHeight - r.top + 4 } : { top: r.bottom + 4 }),
+    });
   };
   const open = pos !== null;
   const setOpen = (v: boolean) => (v ? openAt() : setPos(null));
@@ -62,7 +68,8 @@ export function GrantsEditor({ value, onChange }: {
           onBlur={() => setTimeout(() => setOpen(false), 150)} />
         {open && matches.length > 0 && typeof document !== 'undefined' && createPortal(
           <div style={{
-            position: 'fixed', left: pos!.left, top: pos!.top, width: pos!.width, zIndex: 120,
+            position: 'fixed', left: pos!.left, width: pos!.width, zIndex: 120,
+            ...(pos!.bottom !== undefined ? { bottom: pos!.bottom } : { top: pos!.top }),
             background: 'var(--panel-solid)', border: '1px solid var(--line)', borderRadius: 10,
             boxShadow: 'var(--sh-dd)', padding: 4, maxHeight: 180, overflow: 'auto',
           }}>

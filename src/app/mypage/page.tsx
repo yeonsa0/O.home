@@ -1,16 +1,19 @@
 'use client';
 // 마이페이지 (v1.9) — 내 정보 수정(닉네임·프로필 이미지·비밀번호) +
 // 일반 회원: 나에게 연동된 캐릭터 리스트 · 내가 쓴 글/댓글 리스트 (관리자는 기본정보만)
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
-import { useLocalList, BOARD_SEED, GUEST_SEED, Post, GuestEntry, fmtDate } from '@/lib/postStore';
+import {
+  useLocalList, BOARD_SEED, GUEST_SEED, Post, GuestEntry, fmtDate,
+  CommentRow, COMMENT_KEY, COMMENT_SEED,
+} from '@/lib/postStore';
 import { Character, CHAR_SEED } from '@/lib/charStore';
 import { RoadItem, ROAD_SEED } from '@/lib/galleryStore';
 import { useBoards } from '@/lib/boardStore';
 import { collectMyItems, MyItem } from '@/lib/myActivity';
 import { CroppedBlobImg } from '@/components/ui/CropEditor';
-import { putBlob, useBlobUrl } from '@/lib/blobStore';
+import { putBlob, useBlobUrl, promoteToStorage } from '@/lib/blobStore';
 import { KInput } from '@/components/ui/Kit';
 import { Modal } from '@/components/ui/Modal';
 import { ColorField } from '@/components/ui/ColorField';
@@ -26,6 +29,8 @@ export default function MyPage() {
   const [posts] = useLocalList<Post>('ohome.board.v1', BOARD_SEED);
   const [roads] = useLocalList<RoadItem>('ohome.road.v1', ROAD_SEED);
   const [guestEntries] = useLocalList<GuestEntry>('ohome.guest.v1', GUEST_SEED);
+  // 댓글은 글과 따로 저장된다 (v2.0)
+  const [cmtRows] = useLocalList<CommentRow>(COMMENT_KEY, COMMENT_SEED);
   const { boards } = useBoards();
 
   const [nick, setNick] = useState('');
@@ -38,6 +43,36 @@ export default function MyPage() {
   // 프로필 이미지 선택 모달 (v1.9) — 단색 / 이미지 업로드 / 기본
   const [avOpen, setAvOpen] = useState(false);
   const [avColor, setAvColor] = useState('#6b7280');
+
+  // 백엔드를 붙이기 전에 올린 프로필 사진은 참조가 이 브라우저의 파일 id라 다른 데서 로그인하면
+  // 안 보인다 (v2.0 사용자 발견). 원본이 여기 남아 있으면 저장소로 올리고 주소로 바꿔 둔다.
+  //
+  // 처음엔 조용히 처리했는데, 안 될 때 아무 말이 없어서 「올렸는데 왜 안 보이지」에서 막혔다
+  // (v2.0 사용자 지적). 못 옮겼으면 **왜** 못 옮겼는지 사진 밑에 그대로 적어 준다.
+  const avatarRef = user?.avatarUrl;
+  const [avNote, setAvNote] = useState('');
+  useEffect(() => {
+    if (!avatarRef) { setAvNote(''); return; }
+    let alive = true;
+    void (async () => {
+      const r = await promoteToStorage(avatarRef);
+      if (!alive) return;
+      if (r.kind === 'uploaded') {
+        const up = await updateProfile({ avatarUrl: r.url });
+        if (!alive) return;
+        setAvNote(up.ok ? '' : `저장소에는 올렸지만 프로필에 반영하지 못했습니다 — ${up.error}`);
+      } else if (r.kind === 'no-origin') {
+        setAvNote('이 사진의 원본이 이 브라우저에 없어 저장소로 옮길 수 없습니다 — 사진을 다시 올려 주세요');
+      } else if (r.kind === 'local-mode') {
+        setAvNote('서버에 연결되어 있지 않아 이 사진은 이 브라우저에만 저장됩니다');
+      } else if (r.kind === 'failed') {
+        setAvNote(`저장소로 올리지 못했습니다 — ${r.error}`);
+      } else {
+        setAvNote('');
+      }
+    })();
+    return () => { alive = false; };
+  }, [avatarRef, updateProfile]);
 
   // 닉네임 초기값 — user 로드 후 한 번
   if (user && !nickInit) { setNick(user.nickname); setNickInit(true); }
@@ -57,7 +92,16 @@ export default function MyPage() {
   };
   const changeAvatar = async (f: File | undefined) => {
     if (!f) return;
-    const id = await putBlob(f);
+    // 올리기가 실패하면 예전엔 여기서 그냥 튕겨서 **아무 말도 없이** 끝났다 — 모달만 열린 채라
+    // 저장된 줄 알고 넘어가게 된다 (v2.0 사용자 지적: 「저장 안 됐는지 다른 브라우저에서 안 보인다」).
+    // 저장소 규칙을 안 붙였거나 버킷 설정이 없으면 여기서 걸리므로, 이유를 그대로 보여 준다.
+    let id: string;
+    try {
+      id = await putBlob(f);
+    } catch (e) {
+      toast(`이미지를 저장소에 올리지 못했습니다 — ${e instanceof Error ? e.message : String(e)}`);
+      return;
+    }
     const r = await updateProfile({ avatarUrl: id });
     setAvOpen(false);
     toast(r.ok ? '프로필 이미지가 변경되었습니다' : r.error!);
@@ -74,7 +118,7 @@ export default function MyPage() {
   const myChars = chars.filter(c => c.grants?.some(g => g.userId === user.id));
 
   // 내가 쓴 글/댓글 (일반 회원) — 6개까지만, 나머지는 전체 리스트에서 (v1.9)
-  const myItems: MyItem[] = collectMyItems(user.id, posts, roads, guestEntries, boards);
+  const myItems: MyItem[] = collectMyItems(user.id, posts, roads, guestEntries, boards, cmtRows);
 
   return (
     <section className="page">
@@ -101,6 +145,12 @@ export default function MyPage() {
               </div>
               <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }}
                 onChange={e => { changeAvatar(e.target.files?.[0]); e.target.value = ''; }} />
+              {/* 이 사진이 다른 곳에서 안 보이는 이유 — 있을 때만 (v2.0 사용자 지적) */}
+              {avNote && (
+                <p className="hint" style={{ margin: 0, maxWidth: 190, textAlign: 'center', lineHeight: 1.5 }}>
+                  {avNote}
+                </p>
+              )}
             </div>
             <div style={{ flex: 1, minWidth: 220, display: 'grid', gap: 10 }}>
               <div>

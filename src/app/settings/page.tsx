@@ -1,7 +1,7 @@
 ﻿'use client';
 // 환경설정 (기획서 5장) — 0차: 「디자인」 탭(테마) 실동작.
 // 나머지 카테고리는 해당 기능 마일스톤에서 함께 구현.
-import React, { Suspense, useEffect, useRef, useState } from 'react';
+import React, { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth, inviteCode, setInviteCode } from '@/lib/auth';
 import { useMembers } from '@/lib/members';
 import { useTheme } from '@/lib/ThemeProvider';
@@ -36,6 +36,7 @@ import { SymbolInput } from '@/components/ui/SymbolInput';
 import { allBlobs, putBlobAs, useBlobUrl, getBlob } from '@/lib/blobStore';
 import { parseAni } from '@/lib/aniCursor';
 import { fileDrop } from '@/lib/dnd';
+import { Character, CHAR_SEED, Relation, REL_SEED } from '@/lib/charStore';
 import { useLocalList } from '@/lib/postStore';
 import { Mood, MOOD_SEED, moodTint } from '@/lib/diaryStore';
 import {
@@ -67,6 +68,36 @@ function CP({ label, k, def }: { label?: string; k: keyof ThemeVars; def?: strin
       {label && <span className="cp-lb">{label}</span>}
       <ColorField value={String(state.vars[k] ?? def ?? '#888888')} onChange={hex => setVar(k, hex as never)} />
     </>
+  );
+}
+
+/**
+ * 위젯 스타일 (v2.0 사용자 요청) — 메인·사이드에 얹히는 카드의 배경·타이틀색·본문색·테두리.
+ *
+ * 색을 안 정하면 `--wg-*`가 카드 색을 그대로 가리키므로 지금까지와 똑같이 보인다. 그래서 값이
+ * 비어 있을 때 입력란에는 **지금 실제로 쓰이는 카드 색**을 채워 둔다 — 처음 열었을 때 엉뚱한
+ * 회색이 아니라 화면에 보이는 그 색이 나와야 조금만 바꿔 쓰기 쉽다.
+ * 테두리는 켤 때만 그린다(끄면 지금처럼 그림자만).
+ */
+function WidgetStyleRow() {
+  const { state, setVar } = useTheme();
+  const v = state.vars;
+  return (
+    <div className="set-row" style={{ flexWrap: 'wrap' }}>
+      <div className="l"><b>위젯</b>
+        <small>메인·사이드에 얹히는 카드 — 비워 두면 카드 색을 그대로 따라갑니다</small></div>
+      <div style={{ display: 'grid', gap: 8, justifyItems: 'end' }}>
+        <div className="cp-grid2">
+          <CP label="배경" k="wgBg" def={v.cardBg ?? '#fbfbfc'} />
+          <CP label="타이틀" k="wgTitle" def={v.pageDesc ?? '#8a8f98'} />
+          <CP label="본문" k="wgFg" def={v.cardFg ?? '#1d2025'} />
+        </div>
+        <div className="cf-row" style={{ justifyContent: 'flex-end' }}>
+          <KCheck label="테두리" checked={!!v.wgBorder} onChange={b => setVar('wgBorder', b)} />
+          {v.wgBorder && <CP label="색" k="wgBd" def="#e6e8ec" />}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -276,6 +307,12 @@ function DesignPane() {
         <DocTitleControl />
       </div>
 
+      {/* 브라우저 탭 아이콘 (v2.0 사용자 요청) — 지정 전에는 배포 기본 아이콘이 뜬다 */}
+      <div className="set-row" style={{ flexWrap: 'wrap' }}>
+        <div className="l"><b>브라우저 탭 아이콘</b><small>탭·즐겨찾기에 표시되는 작은 그림 — 정사각형 PNG 권장, 비우면 기본 아이콘</small></div>
+        <FaviconControl />
+      </div>
+
       <div className="set-row" style={{ flexWrap: 'wrap' }}>
         <div className="l"><b>크롤링 설명 문구</b><small>카톡·디스코드 등에 링크 공유 시 제목 아래 뜨는 한 줄 — 비우면 서브타이틀, 그것도 비었으면 기본 문구</small></div>
         <CrawlDescControl />
@@ -426,6 +463,9 @@ function DesignPane() {
           <CP label="글씨" k="segFg" />
         </div>
       </div>
+
+      {/* 위젯 스타일 (v2.0 사용자 요청) — 메인·사이드 카드. 안 정하면 카드 색을 그대로 따라간다 */}
+      <WidgetStyleRow />
 
       <div className="set-row">
         <div className="l"><b>진한 버튼</b><small>등록·저장 버튼과 체크박스·선택 필터 칩 공통</small></div>
@@ -776,6 +816,18 @@ function RelQPane() {
   const sel = sets.find(s => s.id === selId) ?? sets[0];
   const patchSet = (id: string, p: Partial<RelQuestionSet>) =>
     setSets(sets.map(s => (s.id === id ? { ...s, ...p } : s)));
+
+  // 질문은 txt로 수백 개씩 올리는 경우가 있어 한 화면에 다 깔면 끝없이 길어진다 (v2.0 사용자 요청)
+  const PER_Q = 12;
+  const [qPage, setQPage] = useState(1);
+  const qTotal = sel?.questions.length ?? 0;
+  const qPages = Math.max(1, Math.ceil(qTotal / PER_Q));
+  // 세트를 바꾸거나 질문이 줄어 페이지가 사라지면 마지막 페이지로 당긴다
+  const qCur = Math.min(qPage, qPages);
+  useEffect(() => { setQPage(1); }, [sel?.id]);
+  const qStart = (qCur - 1) * PER_Q;
+  // 화면에 보이는 건 이 페이지뿐이라, 수정·삭제·정렬은 전체 배열 기준 위치로 되돌려 계산해야 한다
+  const qShown = (sel?.questions ?? []).slice(qStart, qStart + PER_Q);
   return (
     <div className="set-sec">
       <h3>자관 질문</h3>
@@ -821,24 +873,44 @@ function RelQPane() {
       )}
       {sel && (
         <>
-          <DragList items={sel.questions.map((q, i) => ({ q, key: `${sel.id}-${i}` }))} keyOf={x => x.key}
-            onReorder={list => patchSet(sel.id, { questions: list.map(x => x.q) })}
-            render={({ q }, i) => (
+          {/* 정렬은 이 페이지 안에서만 — 되돌려 담을 때 앞뒤 페이지는 그대로 둔다 */}
+          <DragList items={qShown.map((q, i) => ({ q, key: `${sel.id}-${qStart + i}` }))} keyOf={x => x.key}
+            onReorder={list => patchSet(sel.id, {
+              questions: [
+                ...sel.questions.slice(0, qStart),
+                ...list.map(x => x.q),
+                ...sel.questions.slice(qStart + PER_Q),
+              ],
+            })}
+            render={({ q }, i) => {
+              const gi = qStart + i;   // 전체 배열에서의 실제 위치
+              return (
               /* 컴팩트 행 — 질문이 100개 단위라 갭 최소화 (v1.9) */
               <div style={{ display: 'flex', gap: 8, alignItems: 'center', width: '100%', padding: '2px 0' }}>
                 <span className="drag-h" style={{ fontSize: 11 }}>⠿</span>
+                <small style={{ color: 'var(--faint)', fontSize: 10, minWidth: 26, textAlign: 'right' }}>{gi + 1}</small>
                 <KInput value={q}
-                  onChange={e => patchSet(sel.id, { questions: sel.questions.map((x, j) => (j === i ? e.target.value : x)) })}
+                  onChange={e => patchSet(sel.id, { questions: sel.questions.map((x, j) => (j === gi ? e.target.value : x)) })}
                   style={{ flex: 1, minWidth: 0, fontSize: 12, padding: '5px 10px' }} />
                 <span className="fx" style={{ fontSize: 10, padding: '2px 4px' }}
                   onClick={() => {
                     // 내용이 있으면 경고 모달, 방금 추가한 빈 줄은 바로 삭제
-                    const remove = () => patchSet(sel.id, { questions: sel.questions.filter((_, j) => j !== i) });
+                    const remove = () => patchSet(sel.id, { questions: sel.questions.filter((_, j) => j !== gi) });
                     if (q.trim()) del.ask(`질문을 삭제하시겠습니까?`, remove, `"${q.slice(0, 40)}${q.length > 40 ? '…' : ''}"`);
                     else remove();
                   }}>✕</span>
               </div>
-            )} />
+              );
+            }} />
+          {/* 개수는 완전히 오른쪽 끝으로, 페이저는 가운데 그대로 (v2.0 사용자 요청) —
+              한 줄에 나란히 두면 개수만큼 페이저가 왼쪽으로 밀려 가운데가 어긋난다 */}
+          {qTotal > PER_Q && (
+            <div style={{ marginTop: 10, display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center' }}>
+              <span />
+              <Pager page={qCur} total={qPages} onChange={setQPage} />
+              <small style={{ color: 'var(--faint)', fontSize: 10.5, justifySelf: 'end' }}>총 {qTotal}개</small>
+            </div>
+          )}
           <div style={{ marginTop: 10, display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
             {/* txt 일괄 업로드 — 엔터 기준 한 줄 = 질문 하나 (v1.9, 100개 단위 대비) */}
             <input ref={txtRef} type="file" accept=".txt,text/plain" style={{ display: 'none' }}
@@ -853,7 +925,11 @@ function RelQPane() {
             <button className="btn btn-dark" style={{ padding: '5px 12px', fontSize: 11 }}
               onClick={() => txtRef.current?.click()}>↑ TXT 업로드</button>
             <button className="btn btn-ghost" style={{ padding: '5px 12px', fontSize: 11 }}
-              onClick={() => patchSet(sel.id, { questions: [...sel.questions, ''] })}>＋ ADD</button>
+              onClick={() => {
+                patchSet(sel.id, { questions: [...sel.questions, ''] });
+                // 새 빈 줄은 맨 끝에 붙으므로 그 줄이 있는 페이지로 옮겨 준다 (안 그러면 눌러도 안 보인다)
+                setQPage(Math.ceil((qTotal + 1) / PER_Q));
+              }}>＋ ADD</button>
           </div>
         </>
       )}
@@ -1086,16 +1162,20 @@ function ForkUpdateRow() {
   const trimmed = url.trim();
   const valid = /^https:\/\/github\.com\/[^/\s]+\/[^/\s]+\/?$/i.test(trimmed);
   return (
-    <div className="set-row" style={{ flexWrap: 'wrap' }}>
-      <div className="l"><b>포크 업데이트</b>
-        <small>내 포크 주소를 저장해 두면, 원본에 업데이트가 올라왔을 때 GitHub의 [Sync fork] 화면으로 바로 이동할 수 있습니다</small>
+    <div className="set-sec" style={{ marginTop: 26 }}>
+      <h3>포크 업데이트</h3>
+      <div className="d">
+        내 포크 주소를 저장해 두면, 원본에 업데이트가 올라왔을 때 GitHub의 [Sync fork] 화면으로 바로 이동할 수 있습니다
       </div>
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-        <KInput placeholder="https://github.com/내아이디/O.home" value={url} onChange={e => setUrl(e.target.value)} style={{ width: 250 }} />
-        <button className="btn btn-ghost" disabled={!loaded}
-          onClick={() => { setSetting('ohome.repo.v1', trimmed); toast('저장되었습니다'); }}>SAVE</button>
-        <button className="btn btn-dark" disabled={!valid}
-          onClick={() => window.open(trimmed, '_blank', 'noopener')}>내 포크로 이동 ↗</button>
+      <div className="set-row" style={{ flexWrap: 'wrap' }}>
+        <div className="l"><b>내 포크 주소</b><small>GitHub에서 포크한 저장소의 주소</small></div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <KInput placeholder="https://github.com/내아이디/O.home" value={url} onChange={e => setUrl(e.target.value)} style={{ width: 250 }} />
+          <button className="btn btn-ghost" disabled={!loaded}
+            onClick={() => { setSetting('ohome.repo.v1', trimmed); toast('저장되었습니다'); }}>SAVE</button>
+          <button className="btn btn-dark" disabled={!valid}
+            onClick={() => window.open(trimmed, '_blank', 'noopener')}>내 포크로 이동 ↗</button>
+        </div>
       </div>
     </div>
   );
@@ -1218,6 +1298,45 @@ function CrawlDescControl() {
     <LiveInput value={site.crawlDesc ?? ''} onValue={v => set({ crawlDesc: v })}
       placeholder="자캐놀이용 개인 아카이브"
       style={{ width: 260, height: 35, boxSizing: 'border-box' }} />
+  );
+}
+
+/** 브라우저 탭 아이콘 (v2.0 사용자 요청) — 지정 전에는 기본 아이콘(배포 기본값)이 뜬다.
+ *  탭 제목 바로 아래에 같은 드래프트/SAVE 흐름으로 둔다. */
+function FaviconControl() {
+  const { site, set } = useSiteDraft();
+  const toast = useToast();
+  const url = useBlobUrl(site.favicon);
+  return (
+    <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+      <span style={{
+        width: 35, height: 35, borderRadius: 'var(--radius-s)', border: '1px solid var(--line)',
+        background: 'var(--panel)', display: 'grid', placeItems: 'center', overflow: 'hidden', flexShrink: 0,
+      }}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        {url ? <img src={url} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+          : <span style={{ fontSize: 10, color: 'var(--faint)' }}>기본</span>}
+      </span>
+      <input id="siteFavicon" type="file" accept="image/png,image/x-icon,image/svg+xml,image/webp,.ico"
+        style={{ display: 'none' }}
+        onChange={async e => {
+          const f = e.target.files?.[0];
+          e.target.value = '';
+          if (!f) return;
+          // 올리기가 막히면 아무 말 없이 끝나지 않게 (v2.0 — 프로필 사진에서 겪은 것과 같은 이유)
+          try { set({ favicon: await putBlob(f) }); } catch (err) {
+            toast(`아이콘을 저장소에 올리지 못했습니다 — ${err instanceof Error ? err.message : String(err)}`);
+          }
+        }} />
+      <button className="btn btn-ghost" style={{ height: 35, padding: '0 14px', fontSize: 11 }}
+        onClick={() => document.getElementById('siteFavicon')?.click()}>
+        {site.favicon ? 'CHANGE' : 'UPLOAD'}
+      </button>
+      {site.favicon && (
+        <button className="btn btn-ghost" style={{ height: 35, padding: '0 14px', fontSize: 11 }}
+          onClick={() => set({ favicon: undefined })}>REMOVE</button>
+      )}
+    </div>
   );
 }
 
@@ -1402,6 +1521,25 @@ function DataPane() {
     toast(`이미지 ${n}개를 지웠습니다`);
   };
 
+  /* 어디에도 안 걸린 상대 캐릭터 정리 (v2.0 사용자 요청).
+     자관을 지워도 그 자관에서 만든 상대 캐릭터는 남는다. **일부러 그렇게 둔다** — 실수로 자관을
+     지웠을 때 캐릭터까지 사라지면 되돌릴 방법이 없기 때문(사용자 판단). 대신 정말 아무 자관에도
+     안 걸린 것만 골라 여기서 지운다. 내 캐릭터(own)는 자관과 무관하게 존재하므로 건드리지 않는다. */
+  const [chars, setChars] = useLocalList<Character>('ohome.chars.v1', CHAR_SEED);
+  const [rels] = useLocalList<Relation>('ohome.rels.v1', REL_SEED);
+  const [charAsk, setCharAsk] = useState(false);
+  const orphanChars = useMemo(() => {
+    const used = new Set<string>();
+    rels.forEach(r => r.members.forEach(m => used.add(m.charId)));
+    return chars.filter(c => !c.own && !used.has(c.id));
+  }, [chars, rels]);
+
+  const cleanChars = () => {
+    const gone = new Set(orphanChars.map(c => c.id));
+    setChars(chars.filter(c => !gone.has(c.id)));
+    toast(`상대 캐릭터 ${gone.size}명을 지웠습니다`);
+  };
+
   // 이 브라우저에 저장돼 있던 사이트 설정을 서버로 올린다 (연결 직후 1회면 충분)
   const doPush = async () => {
     setPushing(true);
@@ -1544,6 +1682,22 @@ function DataPane() {
           </div>
         </div>
       )}
+      {/* 어디에도 안 걸린 상대 캐릭터 정리 (v2.0 사용자 요청) — 자관을 지워도 캐릭터는 일부러 남긴다.
+          실수로 지웠을 때 되돌릴 수 있게. 정말 안 쓰는 것만 여기서 골라 지운다 */}
+      <div className="set-row" style={{ flexWrap: 'wrap' }}>
+        <div className="l"><b>등록되지 않은 상대 캐릭터 정리</b>
+          <small>자관을 지워도 상대 캐릭터는 남습니다(실수로 지웠을 때를 위해) — 어느 자관에도 없는 캐릭터만 골라 지웁니다</small></div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <span className="hint">
+            {orphanChars.length > 0 ? `${orphanChars.length}명` : '정리할 것 없음'}
+          </span>
+          {orphanChars.length > 0 && (
+            <button className="btn btn-accent" style={{ padding: '9px 18px' }}
+              onClick={() => setCharAsk(true)}>{orphanChars.length}명 지우기</button>
+          )}
+        </div>
+      </div>
+
       {/* 백업 두 갈래 (v1.9 사용자 확정) — 회원 계정 포함 여부 선택 */}
       <div className="set-row" style={{ flexWrap: 'wrap' }}>
         <div className="l"><b>백업 내보내기</b><small>글·캐릭터·설정 + 이미지 → zip · 회원 계정(가입자·가입코드) 포함 여부 선택</small></div>
@@ -1691,6 +1845,15 @@ function DataPane() {
         buttons={[
           { label: '지우기', kind: 'accent', onClick: () => { setCleanAsk(false); void cleanOrphans(); } },
           { label: 'CANCEL', kind: 'ghost', onClick: () => setCleanAsk(false) },
+        ]} />
+
+      {/* 지울 캐릭터 이름을 그대로 보여 준다 (v2.0) — 개수만으로는 무엇이 사라지는지 알 수 없다 */}
+      <ConfirmModal open={charAsk} title={`상대 캐릭터 ${orphanChars.length}명을 지울까요?`}
+        body={`${orphanChars.slice(0, 12).map(c => c.name).join(', ')}${orphanChars.length > 12 ? ` 외 ${orphanChars.length - 12}명` : ''} — 어느 자관에도 등록돼 있지 않은 캐릭터입니다. 지우면 복구할 수 없습니다.`}
+        onClose={() => setCharAsk(false)}
+        buttons={[
+          { label: '지우기', kind: 'accent', onClick: () => { setCharAsk(false); cleanChars(); } },
+          { label: 'CANCEL', kind: 'ghost', onClick: () => setCharAsk(false) },
         ]} />
 
       <ConfirmModal open={resetAsk} title="선택한 항목을 초기화할까요?"

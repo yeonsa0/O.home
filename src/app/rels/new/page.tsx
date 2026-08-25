@@ -37,10 +37,10 @@ export default function RelNewPage() {
         existingIds={rels.map(r => r.id)}
         onCancel={() => router.push('/rels')}
         onSave={v => {
-          const members: RelMember[] = v.pickedCharIds.map(cid => {
-            const ch = chars.find(c => c.id === cid)!;
-            return { charId: cid, quote: '', keywords: [], desc: '', palette: ch.colors };
-          });
+          // 팔레트는 캐릭터 쪽을 상세에서 그대로 읽는다 — 여기서 복사해 두면 나중에 캐릭터 색을
+          // 바꿔도 자관이 따라오지 않는다 (v2.0 — 상세 페이지와 같은 규칙으로 통일)
+          const members: RelMember[] = v.pickedCharIds.map(cid =>
+            ({ charId: cid, quote: '', keywords: [], desc: '', palette: [] }));
           const rel: Relation = {
             id: v.slug ?? newId(),   // 지정한 페이지 주소 (v1.9) — 비우면 자동
             name: v.name, catchphrase: v.catchphrase, kind: v.kind,
@@ -52,6 +52,7 @@ export default function RelNewPage() {
             nameColor: v.nameColor, cpColor: v.cpColor, cpTagBg: v.cpTagBg, cpTagFg: v.cpTagFg,
             nameShadowColor: v.nameShadowColor, nameShadow: v.nameShadow,
             headerBgG1: v.headerBgG1, headerBgG2: v.headerBgG2, headerBgAngle: v.headerBgAngle,
+            pageBgG1: v.pageBgG1, pageBgG2: v.pageBgG2, pageBgAngle: v.pageBgAngle,
             members, thumbClass: '',
             illustMode: v.kind === 'pair' ? 'duo' : 'one',
             aus: [{ id: 'base', label: '원본', catchphrase: v.catchphrase }],

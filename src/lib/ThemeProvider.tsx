@@ -13,9 +13,15 @@ import { newId } from './postStore';
 import { getBlob } from './blobStore';
 import { getRawSetting, setSetting } from './settingStore';
 
+/** 페이지 배경 그라데이션 (자관별 지정, v2.0) — 색 2개 + 각도 */
+export interface PageBg { g1: string; g2: string; angle: number }
+
 interface ThemeCtx {
   /** 페이지 임시 테마 (자관·커미션 페이지 테마컬러) — 벗어나면 null로 원복, 저장되지 않음 */
   setPageTheme: (color: string | null, tone?: PointTone) => void;
+  /** 페이지 배경만 따로 (v2.0 사용자 요청 — 자관별 배경 그라데이션).
+   *  테마컬러(setPageTheme)가 팔레트 전체를 바꾸는 것과 달리 배경 두 색·각도만 덮어쓴다. */
+  setPageBg: (bg: PageBg | null) => void;
   /** 현재(드래프트) 상태 — 기존 소비자 호환 형태 {mode, pointTone, vars} */
   state: ThemeState;
   dirty: boolean;                              // 저장 안 된 변경 존재
@@ -61,6 +67,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [draft, setDraft] = useState<ThemeStore>(DEFAULT_THEME_STORE);
   const [presets, setPresets] = useState<ThemePreset[]>([]);
   const [pageColor, setPageColor] = useState<{ color: string; tone?: PointTone } | null>(null);
+  const [pageBg, setPageBgState] = useState<PageBg | null>(null);   // 자관별 배경 (v2.0)
   const [loaded, setLoaded] = useState(false);   // 저장본 로드 전 기본 다크를 DOM에 쓰지 않기 (FOUC 방지)
 
   // 최초 로드 — v2 우선, 없으면 v1 마이그레이션 (기존 vars를 해당 모드의 수정본으로 승계)
@@ -101,14 +108,23 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     applyToDom(pageColor
       ? derivePointTheme(pageColor.color, pageColor.tone ?? draft.pointTone)
       : draft.perMode[draft.mode]);
-  }, [draft, pageColor, loaded]);
+    // 페이지 배경 지정 (v2.0) — 팔레트를 적용한 뒤에 배경 세 값만 덮어쓴다.
+    // 이 effect가 팔레트를 다시 칠하므로 순서상 여기서 덮어야 남는다.
+    const root = document.documentElement;
+    if (pageBg) {
+      root.style.setProperty('--bg-g1', pageBg.g1);
+      root.style.setProperty('--bg-g2', pageBg.g2);
+      root.style.setProperty('--bg-angle', `${pageBg.angle}deg`);
+      root.style.setProperty('--bg-image', 'none');   // 사이트 배경 이미지가 덮지 않게
+    }
+  }, [draft, pageColor, pageBg, loaded]);
 
   // 배경 이미지 (v1.9) — IndexedDB 파일을 blob URL로 풀어 --bg-image 적용 (그라데이션 모드면 해제)
   useEffect(() => {
     if (!loaded) return;
     const vars = draft.perMode[draft.mode];
     const root = document.documentElement;
-    if (vars.bgType === 'image' && vars.bgImageId && !pageColor) {
+    if (vars.bgType === 'image' && vars.bgImageId && !pageColor && !pageBg) {
       let cancelled = false;
       let url: string | null = null;
       getBlob(vars.bgImageId).then(b => {
@@ -123,7 +139,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       };
     }
     root.style.removeProperty('--bg-image');
-  }, [draft, pageColor, loaded]);
+  }, [draft, pageColor, pageBg, loaded]);
 
   const dirty = useMemo(() => JSON.stringify(saved) !== JSON.stringify(draft), [saved, draft]);
 
@@ -197,6 +213,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
   const setPageTheme = useCallback((color: string | null, tone?: PointTone) =>
     setPageColor(color ? { color, tone } : null), []);
+  const setPageBg = useCallback((bg: PageBg | null) => setPageBgState(bg), []);
 
   // 기존 소비자 호환 — state.vars = 현재 모드의 드래프트 값
   const state: ThemeState = useMemo(() => ({
@@ -206,7 +223,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   return (
     <Ctx.Provider value={{
       state, dirty, setMode, setPointAccent, setPointTone, setVar,
-      resetMode, save, discard, presets, savePreset, applyPreset, removePreset, setPageTheme,
+      resetMode, save, discard, presets, savePreset, applyPreset, removePreset, setPageTheme, setPageBg,
     }}>
       {children}
     </Ctx.Provider>

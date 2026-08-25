@@ -3,7 +3,10 @@
 import React, { useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
-import { useLocalList, BOARD_SEED, Post, Comment, newId, fmtDate } from '@/lib/postStore';
+import {
+  useLocalList, BOARD_SEED, Post, Comment, newId, fmtDate,
+  CommentRow, COMMENT_KEY, COMMENT_SEED, commentsFor,
+} from '@/lib/postStore';
 import { useBoards, boardHref, MAIN_BOARD_ID, BoardPerm } from '@/lib/boardStore';
 import { renderBody } from '@/lib/sanitize';
 import { KInput } from '@/components/ui/Kit';
@@ -20,6 +23,9 @@ export default function BoardDetailPage() {
   const { user, isAdmin } = useAuth();
   const toast = useToast();
   const [posts, setPosts, loaded] = useLocalList<Post>('ohome.board.v1', BOARD_SEED);
+  // 댓글은 글과 따로 저장된다 (v2.0) — 글 안에 두면 댓글을 달 때 글을 UPDATE 해야 해서
+  // 일반 회원이 관리자 글에 댓글을 달 수 없었다 (포크 사용자 제보)
+  const [cmtRows, setCmtRows] = useLocalList<CommentRow>(COMMENT_KEY, COMMENT_SEED);
   const { boards } = useBoards();                  // 소속 게시판 (5.2 다중 게시판)
   const [open, setOpen] = useState(false);         // 접기 해제
   const [cmt, setCmt] = useState('');
@@ -61,28 +67,27 @@ export default function BoardDetailPage() {
   const update = (patch: Partial<Post>) =>
     setPosts(posts.map(p => (p.id === post.id ? { ...p, ...patch } : p)));
 
+  // 이 글의 댓글 — 분리 저장분 + 옛 글 안에 남아 있던 것 (v2.0)
+  const comments = commentsFor(cmtRows, 'post', post.id, post.comments);
+
   const addComment = () => {
     if (!canComment) { toast('댓글은 로그인 후 작성할 수 있습니다'); return; }
     if (!cmt.trim()) return;
     if (guestMode && (!gName.trim() || !gPw)) { toast('게스트는 닉네임과 비밀번호를 입력해 주세요'); return; }
-    const c: Comment = user
-      ? {
-        id: newId(), author: user.nickname, authorId: user.id,
-        text: cmt.trim(), date: new Date().toISOString(),
-        parentId: replyTo ?? undefined,
-      }
-      : {
-        id: newId(), author: gName.trim(), authorId: '', guestPw: gPw,
-        text: cmt.trim(), date: new Date().toISOString(),
-        parentId: replyTo ?? undefined,
-      };
-    update({ comments: [...post.comments, c] });
+    const base = { id: newId(), text: cmt.trim(), date: new Date().toISOString(), parentId: replyTo ?? undefined };
+    const c: CommentRow = user
+      ? { ...base, target: 'post', targetId: post.id, author: user.nickname, authorId: user.id }
+      : { ...base, target: 'post', targetId: post.id, author: gName.trim(), authorId: '', guestPw: gPw };
+    setCmtRows([...cmtRows, c]);
     setCmt(''); setReplyTo(null);
   };
 
-  // 게스트 댓글 삭제 — 작성 시 비밀번호 확인
-  const removeComment = (c: Comment) =>
-    update({ comments: post.comments.filter(x => x.id !== c.id && x.parentId !== c.id) });
+  // 댓글 삭제 — 대댓글도 함께. 옛 글 안에 있던 댓글이면 글 쪽에서 지운다 (v2.0)
+  const removeComment = (c: Comment) => {
+    const gone = (x: { id: string; parentId?: string }) => x.id === c.id || x.parentId === c.id;
+    if (cmtRows.some(gone)) setCmtRows(cmtRows.filter(x => !gone(x)));
+    if (post.comments.some(gone)) update({ comments: post.comments.filter(x => !gone(x)) });
+  };
   const confirmPw = () => {
     if (!pwAsk) return;
     if (pwInput !== pwAsk.guestPw) { toast('비밀번호가 일치하지 않습니다'); return; }
@@ -90,8 +95,8 @@ export default function BoardDetailPage() {
     setPwAsk(null);
   };
 
-  const roots = post.comments.filter(c => !c.parentId);
-  const childrenOf = (pid: string) => post.comments.filter(c => c.parentId === pid);
+  const roots = comments.filter(c => !c.parentId);
+  const childrenOf = (pid: string) => comments.filter(c => c.parentId === pid);
 
   const CmtRow = ({ c, depth }: { c: Comment; depth: number }) => (
     <div className={`cmt ${depth > 0 ? 'reply-depth' : ''}`}>
@@ -158,7 +163,7 @@ export default function BoardDetailPage() {
       <div className="panel" style={{ padding: 0, marginTop: 16 }}>
         <div style={{ padding: '16px 18px' }}>
           <h4 style={{ fontSize: 11.5, letterSpacing: '.12em', color: 'var(--faint)', marginBottom: 13 }}>
-            COMMENTS {post.comments.length > 0 && <span style={{ color: 'var(--accent)' }}>{post.comments.length}</span>}
+            COMMENTS {comments.length > 0 && <span style={{ color: 'var(--accent)' }}>{comments.length}</span>}
           </h4>
           {roots.map(c => (
             <React.Fragment key={c.id}>
@@ -166,7 +171,7 @@ export default function BoardDetailPage() {
               {childrenOf(c.id).map(cc => <CmtRow key={cc.id} c={cc} depth={1} />)}
             </React.Fragment>
           ))}
-          {post.comments.length === 0 && (
+          {comments.length === 0 && (
             <p style={{ fontSize: 12, color: 'var(--faint)' }}>첫 댓글을 남겨보세요</p>
           )}
         </div>
@@ -204,7 +209,12 @@ export default function BoardDetailPage() {
       <ConfirmModal open={delAsk} title="글을 삭제하시겠습니까?" body="삭제한 글은 복구할 수 없습니다."
         onClose={() => setDelAsk(false)}
         buttons={[
-          { label: 'DELETE', kind: 'accent', onClick: () => { setPosts(posts.filter(p => p.id !== post.id)); router.push(boardHref(board.id)); } },
+          { label: 'DELETE', kind: 'accent', onClick: () => {
+            setPosts(posts.filter(p => p.id !== post.id));
+            // 글에 딸린 댓글도 함께 지운다 — 따로 저장되므로 남겨 두면 주인 없는 줄이 된다 (v2.0)
+            setCmtRows(cmtRows.filter(c => !(c.target === 'post' && c.targetId === post.id)));
+            router.push(boardHref(board.id));
+          } },
           { label: 'CANCEL', kind: 'ghost', onClick: () => setDelAsk(false) },
         ]} />
     </section>

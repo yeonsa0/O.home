@@ -105,6 +105,15 @@ export const COLLECTION_OF: Record<string, string> = {
   'ohome.comm.v1': 'commissions',
   'ohome.commapply.v1': 'applicants',
   'ohome.moods.v1': 'moods',
+  // 댓글 — 글 안이 아니라 자기 문서로 (v2.0). 글 안에 두면 댓글을 달 때마다 글을 UPDATE 해야 해서
+  // 「글 수정은 작성자·관리자만」 규칙에 걸려 일반 회원이 관리자 글에 댓글을 달 수 없었다
+  'ohome.comments.v1': 'comments',
+  // 자관 문답 답변 — 자관 안이 아니라 자기 문서로 (v2.0). 댓글과 같은 이유:
+  // 자관 안에 두면 답을 달 때마다 자관을 UPDATE 해야 해서 일반 회원이 답할 수 없었다
+  'ohome.qaanswers.v1': 'qa_answers',
+  // 역극 발화 — 방 안이 아니라 자기 문서로 (v2.0). 같은 이유로, 방 안에 두면 말할 때마다
+  // 방을 UPDATE 해야 해서 남이 만든 방에서 참여자가 발화할 수 없었다
+  'ohome.rpmsgs.v1': 'rp_messages',
 };
 
 export const CONTENT_COLLECTIONS = Object.values(COLLECTION_OF);
@@ -138,5 +147,25 @@ export function metaOf(item: ListItem, uid: string | null) {
   const visibility = hasListHidden
     ? (item.listHidden ? 'private' : 'public')
     : (typeof item.visibility === 'string' ? item.visibility : 'public');
-  return { authorId, visibility };
+  return { authorId, visibility, editorIds: editorIdsOf(item) };
+}
+
+/**
+ * 이 항목을 작성자가 아니어도 수정할 수 있는 회원 목록 (v2.0).
+ *
+ * 캐릭터의 grants에서 「편집까지」를 준 회원을 뽑아 **평평한 문자열 배열**로 따로 저장한다.
+ * 보안 규칙은 grants처럼 객체가 든 배열에서 "어떤 원소의 userId가 나와 같은가"를 물을 수단이
+ * 없어서(Firestore 규칙에 some()이 없다), 규칙이 그대로 확인할 수 있는 형태가 따로 필요하다.
+ * 이게 없으면 편집 권한을 줘도 서버가 저장을 거부해 「편집 화면은 뜨는데 SAVE가 먹지 않는」다
+ * (v2.0 사용자 발견 — 댓글 문제와 같은 뿌리).
+ */
+export function editorIdsOf(item: ListItem): string[] {
+  const grants = item.grants;
+  if (!Array.isArray(grants)) return [];
+  return grants
+    .filter((g): g is { userId: string; level: string } =>
+      !!g && typeof g === 'object'
+      && typeof (g as { userId?: unknown }).userId === 'string'
+      && (g as { level?: unknown }).level === 'edit')
+    .map(g => g.userId);
 }

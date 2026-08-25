@@ -290,9 +290,9 @@ export async function createFirebaseBackend(cfg: FirebaseCfg): Promise<Backend> 
       for (const part of chunk(ops, 400)) {
         const batch = writeBatch(db);
         part.forEach(({ item, sort }) => {
-          const { authorId, visibility } = metaOf(item, uid);
+          const { authorId, visibility, editorIds } = metaOf(item, uid);
           batch.set(doc(db, coll, item.id), {
-            data: item, authorId, visibility, sort, updatedAt: Date.now(),
+            data: item, authorId, visibility, editorIds, sort, updatedAt: Date.now(),
           });
         });
         await batch.commit();

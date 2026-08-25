@@ -53,12 +53,16 @@ function RelEditInner() {
             // 페이지 테마 — AU 편집이면 그 AU에만 (base 테마는 유지, v1.9)
             ...(auObj ? {} : { themeMode: v.themeMode, themeColor: v.themeColor, themeTone: v.themeTone, illuBg: v.illuBg, illuOn: v.illuOn, nameColor: v.nameColor, cpColor: v.cpColor, cpTagBg: v.cpTagBg, cpTagFg: v.cpTagFg,
                 nameShadowColor: v.nameShadowColor, nameShadow: v.nameShadow,
-                headerBgG1: v.headerBgG1, headerBgG2: v.headerBgG2, headerBgAngle: v.headerBgAngle }),
+                headerBgG1: v.headerBgG1, headerBgG2: v.headerBgG2, headerBgAngle: v.headerBgAngle,
+                pageBgG1: v.pageBgG1, pageBgG2: v.pageBgG2, pageBgAngle: v.pageBgAngle }),
             cp: v.cp,
             fullFront: v.fullFront ?? r.fullFront,
             illustMode: v.kind === 'pair' ? r.illustMode : 'one',
-            // 전신 크기·위치(공통) — 미리보기 조작 결과 (v1.9)
-            members: (v.fullScales || v.fullOffsets || v.quoteColors || v.quotes)
+            // 전신 크기·위치·한마디·대사 색 — **AU를 편집 중이면 자관 공통을 건드리지 않는다**
+            // (v2.0 사용자 발견: AU에서 고치면 다른 AU 페이지까지 같이 바뀌던 것.
+            //  예전엔 이 줄이 auObj와 상관없이 늘 돌아서 자관 공통 members를 덮어썼다.
+            //  AU 값은 아래 aus의 mset에 따로 담는다)
+            members: (!auObj && (v.fullScales || v.fullOffsets || v.quoteColors || v.quotes))
               ? r.members.map(m => ({
                 ...m,
                 fullScale: v.fullScales?.[m.charId] ?? m.fullScale,
@@ -75,6 +79,29 @@ function RelEditInner() {
               ? {
                 aus: r.aus.map(a => (a.id === auObj.id ? {
                   ...a, arts: v.arts, catchphrase: v.catchphrase,
+                  // AU별 자관명 (v2.0 사용자 요청) — 비우면 자관 이름 그대로 쓰게 아예 지운다
+                  name: v.auName?.trim() ? v.auName.trim() : undefined,
+                  // AU별 색·배경 (v2.0 사용자 요청) — 「직접 지정」을 끄면 undefined가 되어
+                  // 자관 값으로 되돌아간다(auStyle이 묶음 단위로 판정한다)
+                  style: {
+                    nameColor: v.nameColor, cpColor: v.cpColor,
+                    cpTagBg: v.cpTagBg, cpTagFg: v.cpTagFg,
+                    nameShadowColor: v.nameShadowColor, nameShadow: v.nameShadow,
+                    headerBgG1: v.headerBgG1, headerBgG2: v.headerBgG2, headerBgAngle: v.headerBgAngle,
+                    pageBgG1: v.pageBgG1, pageBgG2: v.pageBgG2, pageBgAngle: v.pageBgAngle,
+                    illuBg: v.illuBg, illuOn: v.illuOn,
+                  },
+                  // AU별 멤버 표시값 (v2.0 사용자 발견) — 이 AU에서만 쓰는 전신 위치·한마디·대사 색.
+                  // 자관 공통(members)은 위에서 건드리지 않았으므로 다른 AU는 그대로다
+                  mset: Object.fromEntries(r.members.map(m => [m.charId, {
+                    fullScale: v.fullScales?.[m.charId],
+                    fullOffX: v.fullOffsets?.[m.charId]?.x,
+                    fullOffY: v.fullOffsets?.[m.charId]?.y,
+                    quote: v.quotes?.[m.charId],
+                    nameSize: v.nameSizes?.[m.charId],
+                    quoteColor: v.quoteColors?.[m.charId]?.fg,
+                    quoteMarkColor: v.quoteColors?.[m.charId]?.mark,
+                  }])),
                   // AU별 헤더 (v1.9) — 제거하면 "없음 명시"(null): base 헤더로 되돌아가지 않음
                   headerImgId: v.headerRemoved ? undefined : v.headerImgId,
                   headerCrop: v.headerRemoved ? undefined : v.headerCrop,

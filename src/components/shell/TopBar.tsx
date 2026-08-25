@@ -15,7 +15,7 @@ import { useToast } from '@/components/ui/Toast';
 import { KToggle } from '@/components/ui/Kit';
 import {
   Notif, NotifType, NOTIF_EVENT, NOTIF_TYPE_LABEL,
-  readNotifs, markRead, markAllRead, notifSettings, setNotifSetting,
+  readNotifs, markRead, markAllRead, clearReadNotifs, notifSettings, setNotifSetting,
 } from '@/lib/notifStore';
 
 const BellIcon = () => (
@@ -226,6 +226,10 @@ export function TopBar() {
               <b>알림</b>
               {unread.length > 0 && (
                 <button className="all" onClick={() => markAllRead(user.id)}>모두 읽음</button>
+              )}
+              {/* 읽은 알림은 하루 뒤 저절로 사라지지만, 바로 치우고 싶을 때 (v2.0 사용자 요청) */}
+              {myNotifs.some(n => n.read) && (
+                <button className="all" onClick={() => clearReadNotifs(user.id)}>읽은 알림 정리</button>
               )}
             </div>
             {myNotifs.length === 0 && <p className="empty">알림이 없습니다</p>}

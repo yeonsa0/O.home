@@ -447,7 +447,8 @@ a{color:inherit;text-decoration:none}
 /* 역극 스크롤바 — 기본(8px)보다 얇게 */
 .rp-msgs::-webkit-scrollbar,.rp-rooms-list::-webkit-scrollbar{width:5px}
 .rp-msgs::-webkit-scrollbar-thumb,.rp-rooms-list::-webkit-scrollbar-thumb{border-width:1px}
-.msg{display:flex;gap:10px;max-width:78%;--cc:93,99,109;position:relative} /* 말풍선 = 캐릭터 테마색 저알파 (6장) */
+/* 가로 20px 축소 (v2.0 사용자 요청) — 폭 비율은 그대로 두고 실제 너비만 줄인다 */
+.msg{display:flex;gap:10px;max-width:calc(78% - 20px);--cc:93,99,109;position:relative} /* 말풍선 = 캐릭터 테마색 저알파 (6장) */
 .msg .face{width:38px;height:38px;border-radius:11px;flex-shrink:0;position:relative;overflow:hidden}
 .msg .who{font-size:calc(10.5px*var(--fs,1));color:rgb(var(--cc));font-weight:700;margin-bottom:3px;letter-spacing:.05em}
 .msg .bub{padding:10px 14px;border-radius:13px;border-top-left-radius:4px;font-size:calc(12.5px*var(--fs,1));line-height:1.7;
@@ -807,9 +808,13 @@ body.edit-on .main-grid{grid-template-columns:230px 1fr 260px}
 .banner .slide.on{opacity:1}
 .login-box{padding:18px}
 .login-box h3{font-size:calc(13px*var(--fs,1));letter-spacing:.08em;margin-bottom:12px;color:var(--sub)}
-.widget{padding:16px;margin-bottom:14px;container-type:inline-size;overflow:hidden}
-.widget h4{font-size:calc(11.5px*var(--fs,1));letter-spacing:.12em;color:var(--faint);margin-bottom:11px;display:flex;justify-content:space-between;align-items:center;gap:8px;white-space:nowrap;overflow:hidden}
-.widget h4 .more{font-size:calc(10px*var(--fs,1));color:var(--faint);cursor:var(--cur-pointer,pointer);flex-shrink:0;white-space:nowrap}
+/* 위젯 스타일 (v2.0 사용자 요청) — 배경·타이틀색·본문색·테두리를 디자인 탭에서 따로 정한다.
+   안 정하면 --wg-* 가 카드 색을 그대로 가리키므로 지금까지와 똑같이 보인다.
+   테두리는 --wg-bd-w 가 0px이라 켜기 전에는 그려지지 않는다(그림자만). */
+.widget{padding:16px;margin-bottom:14px;container-type:inline-size;overflow:hidden;
+  background:var(--wg-bg);color:var(--wg-fg);border:var(--wg-bd-w) solid var(--wg-bd)}
+.widget h4{font-size:calc(11.5px*var(--fs,1));letter-spacing:.12em;color:var(--wg-title);margin-bottom:11px;display:flex;justify-content:space-between;align-items:center;gap:8px;white-space:nowrap;overflow:hidden}
+.widget h4 .more{font-size:calc(10px*var(--fs,1));color:var(--wg-title);cursor:var(--cur-pointer,pointer);flex-shrink:0;white-space:nowrap}
 .main-grid .g2{align-items:start}
 .dday-row{display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px dashed var(--line);font-size:calc(12.5px*var(--fs,1))}
 .dday-row:last-child{border:none}
@@ -897,6 +902,12 @@ body.edit-on .main-grid.gridlines .wgt{outline-offset:0}
 /* 우클릭 메뉴 제목 — 어떤 위젯인지 표시 (중복 추가 위젯은 번호 포함, v1.9) */
 .ctx-menu .ctx-ttl{padding:7px 12px 4px;font-size:calc(10.5px*var(--fs,1));font-weight:700;letter-spacing:.06em;color:#8b919b;cursor:default;white-space:nowrap}
 .ctx-menu button.danger:hover{background:rgba(214,69,80,.22);color:#ff9aa2}
+/* 순서 번호 입력 (v2.0 사용자 요청) — 페이지로 나뉘면 드래그로 못 옮기니 번호로 옮긴다 */
+.ctx-menu .ord-input{width:100%;box-sizing:border-box;padding:7px 10px;border-radius:7px;
+  border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.06);color:#fff;
+  font-family:inherit;font-size:calc(13px*var(--fs,1));font-weight:700;text-align:center}
+.ctx-menu .ord-input:focus{outline:none;border-color:rgba(255,255,255,.4);background:rgba(255,255,255,.1)}
+.ctx-menu .ord-hint{margin:6px 2px 4px;font-size:calc(10px*var(--fs,1));color:#8b919b;line-height:1.45;text-align:center}
 
 /* 공통 드래그 리스트 (v1.9 — 들어 올림 + 빈 자리 + FLIP) */
 .dl-row{transition:transform .18s ease}
@@ -928,7 +939,7 @@ body.edit-on .main-grid.gridlines .wgt{outline-offset:0}
 .page-char-detail{padding-bottom:82px}
 .profile-info{padding:24px;overflow:auto}
 .profile-info h3{font-family:var(--serif);font-size:calc(19px*var(--fs,1));letter-spacing:.14em;margin-bottom:4px}
-.profile-info .sub{font-size:calc(11px*var(--fs,1));color:var(--faint);letter-spacing:.1em;margin-bottom:16px}
+.profile-info .sub{font-size:calc(11px*var(--fs,1));color:var(--faint);letter-spacing:.1em;margin-top:7px;margin-bottom:16px}
 .spec{display:grid;grid-template-columns:76px 1fr;gap:7px 10px;font-size:calc(12.5px*var(--fs,1));margin-bottom:18px}
 .spec dt{color:var(--faint);letter-spacing:.06em}
 .spec dd{color:var(--ink)}
@@ -977,7 +988,7 @@ body.edit-on .main-grid.gridlines .wgt{outline-offset:0}
    「한 줄에 맞춰 줄이기」가 넘침을 감지하지 못한다 */
 .mini-prof .hd > div{min-width:0}
 .mini-prof .hd b{font-family:var(--serif);font-size:calc(17px*var(--fs,1));letter-spacing:.16em;display:block}
-.mini-prof .hd small{font-size:calc(9.5px*var(--fs,1));color:var(--faint);letter-spacing:.1em}
+.mini-prof .hd small{display:block;margin-top:5px;font-size:calc(9.5px*var(--fs,1));color:var(--faint);letter-spacing:.1em}
 .mini-prof .specs{padding:11px 16px;font-size:calc(11.5px*var(--fs,1));color:var(--sub)}
 .mini-prof .specs div{display:flex;gap:8px;padding:2.5px 0}
 .mini-prof .specs b{color:var(--faint);font-weight:600;min-width:34px}
@@ -1276,12 +1287,15 @@ body.edit-on .main-grid.gridlines .wgt{outline-offset:0}
 .dt-card .th{position:relative;aspect-ratio:16/9;overflow:hidden}
 .dt-card .bd{padding:13px 15px 15px}
 /* 제목이 길면 두 줄로 늘어나지 않고 말줄임 (v1.9 사용자 확정 — 카드 높이 유지) */
-.dt-card .nm{display:block;font-size:calc(13.5px*var(--fs,1));letter-spacing:.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dt-card .nm{display:block;font-size:calc(13.5px*var(--fs,1));line-height:1.5;letter-spacing:.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .dt-card .meta{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* 링크 있는 시나리오 이름 — 클릭 시 새 탭 (카드 클릭=편집과 분리) */
 .dt-card .nm.has-link{cursor:var(--cur-pointer,pointer);text-decoration:underline;text-underline-offset:3px;text-decoration-color:var(--line)}
 .dt-card .nm.has-link:hover{color:var(--accent);text-decoration-color:var(--accent)}
-.dt-card .meta{display:block;margin-top:3px;font-size:calc(10.5px*var(--fs,1));color:var(--faint)}
+.dt-card .meta{display:block;margin-top:3px;font-size:calc(10.5px*var(--fs,1));line-height:1.5;color:var(--faint)}
+/* 태그 줄은 있든 없든 같은 자리를 차지한다 — 태그 유무로 카드 키가 달라지지 않게 (v2.0 사용자 요청).
+   태그가 많아도 한 줄까지만 (넘치면 잘림) */
+.dt-card .kw-row{margin-top:7px;height:22px;overflow:hidden;flex-wrap:nowrap}
 /* 상태 뱃지 — 공수표·일정 확정만, 이미지 우상단 (4.15) */
 /* 색은 환경설정 > TRPG 탭에서 상태별 지정 (인라인 스타일) */
 /* 한글 잉크 위쏠림 보정 (v1.9 실측) — line-height 11px + 상하 대칭 패딩 (잉크 중심 = 뱃지 중심) */
@@ -1315,7 +1329,8 @@ body.edit-on .main-grid.gridlines .wgt{outline-offset:0}
 .pl-table th{font-size:calc(10px*var(--fs,1));letter-spacing:.14em;color:var(--faint);font-weight:600;text-align:center;padding:10px 6px;border-bottom:1.5px solid var(--line)}
 .pl-table th.sortable{cursor:var(--cur-pointer,pointer);user-select:none}
 .pl-table th.sortable:hover{color:var(--ink)}
-.pl-table td{padding:10px 6px;border-bottom:1px dashed var(--line);text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* 줄 높이를 px로 못박는다 — 배수(1.55)로 두면 글꼴마다 소수점이 달라 줄마다 미세하게 어긋난다 */
+.pl-table td{padding:10px 6px;line-height:calc(20px*var(--fs,1));border-bottom:1px dashed var(--line);text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pl-table tr:last-child td{border-bottom:none}
 .pl-table .td-sc{font-weight:600}  /* Scenario — 가장 넓고 가운데 정렬 (4.16) */
 .pl-table .td-sc a{border-bottom:1px solid var(--line);transition:.15s}
@@ -1327,9 +1342,10 @@ body.edit-on .main-grid.gridlines .wgt{outline-offset:0}
   .pl-table .td-pt.linked{text-decoration:underline;text-underline-offset:3px;cursor:var(--cur-pointer,pointer)}
   .pl-table .td-pt.linked:active{color:var(--accent)}
 }
-.pl-table .td-url a{display:inline-grid;place-items:center;width:24px;height:24px;border-radius:7px;color:var(--sub);transition:.14s}
+.pl-table .td-url{position:relative}
+.pl-table .td-url a{position:absolute;inset:0;margin:auto;display:grid;place-items:center;width:24px;height:24px;border-radius:7px;color:var(--sub);transition:.14s}
 .pl-table .td-url a:hover{background:rgba(127,127,127,.14);color:var(--ink)}
-.pl-table .td-mng button{width:22px;height:22px;border-radius:6px;font-size:calc(10.5px*var(--fs,1));color:var(--faint);transition:.13s}
+.pl-table .td-mng button{width:22px;height:22px;border-radius:6px;font-size:calc(10.5px*var(--fs,1));color:var(--faint);transition:.13s;vertical-align:middle;margin:-2px 0}
 .pl-table .td-mng button:hover{background:rgba(127,127,127,.14);color:var(--ink)}
 /* 모바일 기본 4열: Date/Scenario/Role/Playtime (4.16 — 열 선택 설정은 메뉴 관리 구현 시) */
 @media (max-width:620px){.pl-table .hide-m,.pl-table col.c-wr,.pl-table col.c-with,.pl-table col.c-url,.pl-table col.c-mng{display:none}}
@@ -1593,6 +1609,10 @@ body.edit-on .main-grid.gridlines .wgt{outline-offset:0}
 .cf-row .cp-lb{flex-shrink:0}
 .cf-row .color-field{flex:1;min-width:0;display:flex;align-items:center;gap:6px}
 .cf-row .color-field .k-input{width:100%;min-width:52px;flex:1}
+/* 스테퍼·뱃지 미리보기는 줄어들 수 없는 것들 — 좁은 패널에서 눌리면 안쪽 +버튼·글씨가 잘려 나간다.
+   눌리지 않게 막고, 대신 한 줄에 안 들어가는 조합은 .cf-stack으로 아랫줄에 내린다 (v2.0 사용자 요청) */
+.cf-row .k-step,.cf-row .pill{flex-shrink:0}
+.cf-stack{display:grid;gap:8px}
 
 /* 중간 폭 (621~960px): 구조 유지, 폭만 축소 (v1.8) */
 @media (max-width:960px){

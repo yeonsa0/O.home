@@ -14,6 +14,9 @@ export interface SiteSettings {
   // 링크 공유 시 크롤링되는 설명 문구 (v2.0 사용자 요청) — 카톡·디스코드 미리보기 설명줄.
   // 비우면 서브타이틀을, 그것도 비었으면 기본 문구를 그대로 쓴다 (generateMetadata)
   crawlDesc?: string;
+  // 브라우저 탭 아이콘 (v2.0 사용자 요청) — 비우면 기본 아이콘.
+  // 서버 모드면 저장소 주소라 서버 메타데이터에도 그대로 실리고, 로컬 모드면 파일 id라 화면에서만 붙는다
+  favicon?: string;
 }
 
 export const DEFAULT_SITE_SETTINGS: SiteSettings = {

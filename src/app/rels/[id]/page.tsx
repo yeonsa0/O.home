@@ -10,7 +10,9 @@ import { useTheme } from '@/lib/ThemeProvider';
 import { useLocalList, newId } from '@/lib/postStore';
 import {
   Relation, REL_SEED, Character, CHAR_SEED, RelMember, QaEntry, QaAnswer, TlItem, findChar, Visibility, CharGrant,
+  auMember, auStyle, fullShadow,
   RelAu, RelCpTag, charWithAu, charGrant,
+  QaAnswerRow, QA_KEY, QA_SEED, MergedAnswer, answersFor,
 } from '@/lib/charStore';
 import { RelQuestionSet, RELQ_SEED, RELQ_KEY, CP_LABEL } from '@/lib/relqStore';
 import { putBlob } from '@/lib/blobStore';
@@ -30,7 +32,8 @@ import { useToast } from '@/components/ui/Toast';
 import { PageTitle } from '@/components/ui/PageText';
 
 /** 전신 이미지 — 비율 유지, 하단 정렬, 크기 %는 자관 수정 미리보기에서 지정 (v1.9) */
-function FullImg({ refId, scale, offX = 0, offY = 0 }: { refId: string; scale: number; offX?: number; offY?: number }) {
+// 전신 그림자는 「그림자 직접 지정」의 색·강도를 따른다 (v2.0 사용자 요청) — 자관명 그림자와 같은 설정
+function FullImg({ refId, scale, offX = 0, offY = 0, shadow }: { refId: string; scale: number; offX?: number; offY?: number; shadow?: string }) {
   const url = useBlobUrl(refId);
   if (!url) return null;
   return (
@@ -38,7 +41,7 @@ function FullImg({ refId, scale, offX = 0, offY = 0 }: { refId: string; scale: n
     <img src={url} alt="" draggable={false} style={{
       position: 'absolute', bottom: `${offY}%`, left: `calc(50% + ${offX}%)`, transform: 'translateX(-50%)',
       height: `${scale}%`, maxWidth: 'none',
-      filter: 'drop-shadow(0 8px 18px rgba(0,0,0,.35))',
+      filter: shadow,
     }} />
   );
 }
@@ -71,6 +74,11 @@ function rgbTriple(hex: string): string {
   const f = m.length === 3 ? m.split('').map(c => c + c).join('') : m;
   return `${parseInt(f.slice(0, 2), 16)},${parseInt(f.slice(2, 4), 16)},${parseInt(f.slice(4, 6), 16)}`;
 }
+
+/** 프로필에 덧붙일 메모 — 「회원 ○○ 연결됨」처럼 알려 줄 게 있을 때만.
+ *  예전엔 상대 캐릭터를 등록하면 「상대 캐릭터」라고 적어 뒀는데, 상대 캐릭터 자리에 있는 게
+ *  상대 캐릭터인 건 굳이 적을 일이 아니라 뺐다 (v2.0 사용자 요청 — 이미 저장된 것도 안 보이게) */
+const noteOf = (m: RelMember) => (m.linkedNote === '상대 캐릭터' ? '' : m.linkedNote ?? '');
 
 function MiniProf({ member, char, isAdmin, onGo, onRemove, auUnregistered, side, onMoveSide, onFaceCrop }: {
   member: RelMember; char?: Character; isAdmin: boolean; onGo: () => void; onRemove: () => void;
@@ -131,14 +139,20 @@ function MiniProf({ member, char, isAdmin, onGo, onRemove, auUnregistered, side,
           <b style={{ fontFamily: familyOf(char.fontId), fontSize: member.nameSize ?? undefined }}>
             {char.name}
           </b>
-          <small>{char.sub}{member.linkedNote ? ` · ${member.linkedNote}` : ''}</small>
+          <small>{[char.sub, noteOf(member)].filter(Boolean).join(' · ')}</small>
         </div>
       </div>
       <div className="specs">
         {char.specs.map(s => <div key={s.label}><b>{s.label}</b> {s.value}</div>)}
       </div>
+      {/* 캐릭터의 지금 색 팔레트를 그대로 읽는다 (v2.0 사용자 발견).
+          예전엔 멤버를 추가할 때 복사해 둔 member.palette 스냅샷을 보여 줘서, 캐릭터 쪽에서 색을
+          지우거나 더 넣어도 자관 페이지는 추가 당시 상태에 멈춰 있었다("지웠는데 안 사라져",
+          "더 등록해도 추가로 안 떠"의 원인). 옛 저장분은 캐릭터에 색이 하나도 없을 때만 fallback */}
       <div className="palette-row" data-tip="캐릭터 테마색 팔레트">
-        {member.palette.map(p => (
+        {/* `?? `(nullish)로 판단 — 빈 배열은 "색을 다 지웠다"는 뜻이라 그대로 비워야 한다.
+            length로 보면 전부 지웠을 때 옛 스냅샷이 되살아난다 (v2.0 사용자 재신고) */}
+        {(char.colors ?? member.palette).map(p => (
           <Tip key={p.hex + p.label} tip={p.label}>
             <span className="gem" style={{ background: p.hex }} />
           </Tip>
@@ -275,15 +289,19 @@ export default function RelDetailPage() {
   const [auCatch, setAuCatch] = useState('');
   const [auCp, setAuCp] = useState<RelCpTag>('cp');       // 새 AU의 CP/NCP (v1.9)
   const [qsets] = useLocalList<RelQuestionSet>(RELQ_KEY, RELQ_SEED); // 자관 질문 세트 (환경설정)
+  // 문답 답변은 자관과 따로 저장한다 (v2.0) — 자관 안에 두면 답할 때 자관을 UPDATE 해야 해서
+  // 관리자가 만든 자관에 일반 회원이 답을 달 수 없었다 (댓글과 같은 뿌리)
+  const [qaRows, setQaRows] = useLocalList<QaAnswerRow>(QA_KEY, QA_SEED);
   const [qsetOpen, setQsetOpen] = useState(false);        // QUESTIONS 섹션 추가 — 질문 리스트 선택 모달
   const [delAsk, setDelAsk] = useState(false);   // 자관 삭제 확인
+  const [auDelAsk, setAuDelAsk] = useState<string | null>(null);  // AU 삭제 확인 (v2.0 — 자관 삭제와 별개)
   const del = useConfirmDelete();                // 멤버·타임라인 등 개별 삭제 확인
 
   const rel = rels.find(r => r.id === id);
 
   // 자관별 페이지 테마 (4.18 방식) — 별도 테마컬러면 홈 전체 팔레트를 임시 전환, 벗어나면 원복.
   // AU별 (v1.9): AU에 테마를 지정했으면 그것, 미지정이면 base(원본) 테마 따라가기
-  const { setPageTheme } = useTheme();
+  const { setPageTheme, setPageBg } = useTheme();
   const themeAu = rel?.aus.find(a => a.id === auId);
   const auTheme = themeAu && themeAu.id !== 'base' ? themeAu.theme : undefined;
   const effThemeMode = auTheme?.mode ?? rel?.themeMode;
@@ -294,6 +312,18 @@ export default function RelDetailPage() {
     setPageTheme(pageColor, pageTone);
     return () => setPageTheme(null);
   }, [pageColor, pageTone, setPageTheme]);
+
+  // 자관별 페이지 배경 (v2.0 사용자 요청) — 이 페이지에 있는 동안만, 벗어나면 원래 배경으로
+  // 색·배경은 AU마다 따로 정할 수 있다 (v2.0 사용자 요청) — 정한 게 없으면 자관 기본
+  const themeAuStyle = rel ? auStyle(rel, rel.aus.find(a => a.id === auId)) : undefined;
+  const bgG1 = themeAuStyle?.pageBgG1;
+  const bgG2 = themeAuStyle?.pageBgG2;
+  const bgAngle = themeAuStyle?.pageBgAngle;
+  useEffect(() => {
+    if (!bgG1 && !bgG2) return;
+    setPageBg({ g1: bgG1 ?? '#2b3038', g2: bgG2 ?? '#121418', angle: bgAngle ?? 180 });
+    return () => setPageBg(null);
+  }, [bgG1, bgG2, bgAngle, setPageBg]);
 
   // 삭제된 캐릭터를 가리키는 멤버 자동 정리 — 카드도 안 뜨고 [＋ 멤버 추가]도
   // 안 나오는 유령 슬롯이 남지 않게 (캐릭터 삭제 기능 도입에 따른 정합성 보정)
@@ -317,6 +347,10 @@ export default function RelDetailPage() {
   const auCpTag: RelCpTag | undefined = au?.cp ?? rel?.cp;
   const qaOn = (isBaseAu ? rel?.qaEnabled : au?.qaEnabled) ?? auQuestions.length > 0;
   const curQa: QaEntry | undefined = auQuestions.find(q => q.no === (qaNo ?? auQuestions[0]?.no));
+  /** 질문 하나의 답변 — 옛 자관 안의 것 + 따로 저장된 것 (v2.0). 화면·수정·삭제는 이 목록의 순번을 쓴다 */
+  const answersOf = (no: number): MergedAnswer[] =>
+    answersFor(qaRows, rel?.id ?? '', au?.id ?? 'base', no, auQuestions.find(q => q.no === no)?.answers ?? []);
+  const curAnswers = curQa ? answersOf(curQa.no) : [];
   // 전신이 하나도 등록되지 않았으면 전신 모드를 두지 않는다 —
   // 빈 자리에 「○○ 전신」 자리표시자를 세우는 대신 대표 일러스트만 보여 준다 (사용자 확정)
   const fullRefOf = (cid: string) =>
@@ -375,7 +409,10 @@ export default function RelDetailPage() {
       // 상대 캐릭터 간단 등록 (own:false — 내 캐릭터 리스트에는 표시되지 않음, 4.4)
       const nc: Character = {
         id: newId(), name: mName.trim(), sub: mSub.trim(), color: mColor,
-        colors: [{ hex: mColor, label: '테마색' }], specs: [], tabs: [],
+        // 입력한 색은 대표 테마색(color)으로만 쓴다 — 예전엔 팔레트(colors)에도 「테마색」이라는
+        // 이름으로 한 칸 자동 등록해서, 포인트 컬러로 넣은 값이 팔레트에 멋대로 들어가 있었다
+        // (v2.0 사용자 요청). 팔레트는 캐릭터 수정에서 직접 넣는다
+        colors: [], specs: [], tabs: [],
         basicHtml: '', visibility: 'public', thumbClass: '', own: false,
         grants: mGrants.length ? mGrants : undefined, // 회원 권한 — 역극 플레이/편집 (v1.9)
       };
@@ -387,8 +424,11 @@ export default function RelDetailPage() {
     updateRel({
       members: [...rel.members, {
         charId: cid, quote: mQuote.trim(), keywords: [], desc: '',
-        palette: ch?.colors ?? [{ hex: mColor, label: '테마색' }],
-        linkedNote: mMode === 'new' ? '상대 캐릭터' : undefined,
+        // 팔레트는 캐릭터 쪽을 그대로 읽어 쓴다 — 여기서 복사해 두면 나중에 캐릭터 색을 바꿔도
+        // 자관 페이지가 따라오지 않는다. 입력한 색을 「테마색」이라는 이름으로 팔레트에 자동
+        // 등록하던 것도 없앴다 (v2.0 사용자 요청 — 포인트 컬러로 넣은 값이 테마색으로 들어가 버림)
+        palette: [],
+        // linkedNote는 「회원 ○○ 연결됨」처럼 알려 줄 게 있을 때만 — 상대 캐릭터라고 적어 두던 건 없앴다 (v2.0)
       }],
     });
     setMemberOpen(false);
@@ -451,19 +491,12 @@ export default function RelDetailPage() {
     const seen = new Set([...auQuestions.map(q => q.q), ...auQaPool]);
     const fresh = set.questions.filter(q => !seen.has(q));
     const skipped = set.questions.length - fresh.length;
-    let pool = [...auQaPool, ...fresh];
-    let questions = auQuestions;
-    // 출제 중인 질문이 하나도 없으면 즉시 첫 질문을 랜덤으로 뽑음
-    if (questions.length === 0 && pool.length > 0) {
-      const i = Math.floor(Math.random() * pool.length);
-      const q = pool[i];
-      pool = pool.filter((_, j) => j !== i);
-      questions = [{ no: 1, q, date: new Date().toISOString().slice(0, 10), answers: [] }];
-    }
-    patchAuData({ qaPool: pool, questions, qaEnabled: true });
+    // 리스트를 넣으면 대기 풀에만 담는다 — 출제는 [질문 받기]를 눌렀을 때만 (v2.0 사용자 요청).
+    // 예전엔 출제 중인 질문이 없으면 여기서 곧바로 한 문항을 뽑아 버렸다
+    patchAuData({ qaPool: [...auQaPool, ...fresh], questions: auQuestions, qaEnabled: true });
     setQsetOpen(false); setTab('qa'); setQaNo(null);
     toast(fresh.length
-      ? `「${set.name}」에서 새 질문 ${fresh.length}개가 대기 리스트에 담겼습니다${skipped ? ` (중복 ${skipped}개 제외)` : ''}`
+      ? `「${set.name}」에서 새 질문 ${fresh.length}개가 대기 리스트에 담겼습니다${skipped ? ` (중복 ${skipped}개 제외)` : ''} — [질문 받기]로 출제합니다`
       : `「${set.name}」의 질문은 전부 이미 담겨 있습니다`);
   };
 
@@ -498,10 +531,11 @@ export default function RelDetailPage() {
         qaPool = auQaPool.filter((_, j) => j !== i);
       }
       patchAuData({ questions, qaPool, qaEnabled: true });
+      setQaRows(qaRows.filter(r => !(r.relId === rel.id && r.auId === (au?.id ?? 'base') && r.no === cur.no)));
       setQaNo(questions[0]?.no ?? null);
       toast(auQaPool.length > 0 ? '건너뛰고 다음 질문을 출제했습니다' : '건너뛰었습니다 — 대기 중인 질문이 없습니다');
-    }, cur.answers.length > 0
-      ? `이미 달린 답변 ${cur.answers.length}개도 함께 사라집니다. 건너뛴 질문은 다시 나오지 않습니다.`
+    }, answersOf(cur.no).length > 0
+      ? `이미 달린 답변 ${answersOf(cur.no).length}개도 함께 사라집니다. 건너뛴 질문은 다시 나오지 않습니다.`
       : '건너뛴 질문은 다시 나오지 않습니다.',
     '건너뛰기');
   };
@@ -519,11 +553,11 @@ export default function RelDetailPage() {
     const cid = qaChar ?? answerableIds[0];
     if (!text || !cid || !curQa) return;
     if (!canAnswerAs(cid)) { toast('이 캐릭터로 답할 권한이 없습니다'); return; }
-    patchAuData({
-      questions: auQuestions.map(q => q.no === curQa.no
-        ? { ...q, answers: [...q.answers, { charId: cid, text, authorId: user?.id }] }
-        : q),
-    });
+    // 자관은 건드리지 않는다 — 답변만 자기 행으로 (v2.0)
+    setQaRows([...qaRows, {
+      id: newId(), relId: rel.id, auId: au?.id ?? 'base', no: curQa.no,
+      charId: cid, text, authorId: user?.id, date: new Date().toISOString(),
+    }]);
     setQaText('');
   };
 
@@ -541,26 +575,35 @@ export default function RelDetailPage() {
 
   const canEditAns = (a: QaAnswer) => (a.authorId ? a.authorId === user?.id : isAdmin);
   const canDelAns = (a: QaAnswer) => isAdmin || (!!a.authorId && a.authorId === user?.id);
+  // 분리 저장분(rowId)과 옛 자관 안의 답변(legacyIdx)을 모두 다룬다 (v2.0)
   const saveAnsEdit = () => {
     if (!ansEdit) return;
-    patchAuData({
-      questions: auQuestions.map(q => q.no === ansEdit.qNo
-        ? {
-          ...q,
-          answers: q.answers.map((a, i) => (i === ansEdit.idx
-            ? { ...a, text: ansEdit.text.trim() || a.text, note: ansEdit.note.trim() || undefined }
-            : a)),
-        }
-        : q),
-    });
+    const target = answersOf(ansEdit.qNo)[ansEdit.idx];
+    if (!target) { setAnsEdit(null); return; }
+    const patch = { text: ansEdit.text.trim() || target.text, note: ansEdit.note.trim() || undefined };
+    if (target.rowId) {
+      setQaRows(qaRows.map(r => (r.id === target.rowId ? { ...r, ...patch } : r)));
+    } else {
+      patchAuData({
+        questions: auQuestions.map(q => q.no === ansEdit.qNo
+          ? { ...q, answers: q.answers.map((a, i) => (i === target.legacyIdx ? { ...a, ...patch } : a)) }
+          : q),
+      });
+    }
     setAnsEdit(null);
   };
-  const deleteAns = (qNo: number, idx: number) =>
-    del.ask('이 답변을 삭제하시겠습니까?', () => patchAuData({
-      questions: auQuestions.map(q => q.no === qNo
-        ? { ...q, answers: q.answers.filter((_, i) => i !== idx) }
-        : q),
-    }));
+  const deleteAns = (qNo: number, idx: number) => {
+    const target = answersOf(qNo)[idx];
+    if (!target) return;
+    del.ask('이 답변을 삭제하시겠습니까?', () => {
+      if (target.rowId) setQaRows(qaRows.filter(r => r.id !== target.rowId));
+      else patchAuData({
+        questions: auQuestions.map(q => q.no === qNo
+          ? { ...q, answers: q.answers.filter((_, i) => i !== target.legacyIdx) }
+          : q),
+      });
+    });
+  };
 
   const removeMember = (cid: string) => {
     const c = charOf(cid);
@@ -579,11 +622,15 @@ export default function RelDetailPage() {
 
   /* 페어 좌우 배치 (v2.0 사용자 요청) — 예전에는 등록 순서가 곧 자리라, 처음 넣은 캐릭터는
      오른쪽 카드에서 추가해도 무조건 왼쪽에 들어갔다. pairRight로 오른쪽에 둘 캐릭터를 지정한다. */
+  // 한마디·대사 색·전신 위치는 AU마다 다를 수 있다 (v2.0) — 이 AU 값이 있으면 그것으로 갈아 끼운다
+  const asAu = (m: RelMember | null) => (m && !isBaseAu ? auMember(m, au) : m);
+  // 색·배경도 AU마다 따로 (v2.0 사용자 요청) — AU에 정해 둔 게 없으면 자관 기본이 그대로 나온다
+  const auSt = auStyle(rel, au);
   const pairSlots: (RelMember | null)[] = isDuo
     ? (rel.pairRight
-      ? [rel.members.find(m => m.charId !== rel.pairRight) ?? null,
-        rel.members.find(m => m.charId === rel.pairRight) ?? null]
-      : [rel.members[0] ?? null, rel.members[1] ?? null])
+      ? [asAu(rel.members.find(m => m.charId !== rel.pairRight) ?? null),
+        asAu(rel.members.find(m => m.charId === rel.pairRight) ?? null)]
+      : [asAu(rel.members[0] ?? null), asAu(rel.members[1] ?? null)])
     : [];
 
   /** 이 멤버를 반대쪽 자리로 (좌 ↔ 우) */
@@ -616,11 +663,11 @@ export default function RelDetailPage() {
             </div>
           );
         }
-        if (!rel.headerBgG1 && !rel.headerBgG2) return null;
+        if (!auSt.headerBgG1 && !auSt.headerBgG2) return null;
         return (
           <div className="rel-backdrop">
             <div className="img custom" style={{
-              background: `linear-gradient(${rel.headerBgAngle ?? 180}deg, ${rel.headerBgG1 ?? '#3a4150'}, ${rel.headerBgG2 ?? '#1a1d22'})`,
+              background: `linear-gradient(${auSt.headerBgAngle ?? 180}deg, ${auSt.headerBgG1 ?? '#3a4150'}, ${auSt.headerBgG2 ?? '#1a1d22'})`,
             }} />
           </div>
         );
@@ -628,12 +675,21 @@ export default function RelDetailPage() {
 
       {(rel.aus.length > 1 || isAdmin) && (
         <div className="au-list">
-          {rel.aus.map((a, i) => (
-            <div key={a.id} className={`au-item ph ${['cool', 'pale', 'red'][i % 3]} ${auId === a.id ? 'on' : ''}`}
-              onClick={() => { setAuId(a.id); setArtIdx(0); setQaNo(null); }}>
-              <small>{a.label}</small>
-            </div>
-          ))}
+          {/* AU 네모에 대표 이미지를 넣는다 (v2.0 사용자 요청 — 색만 들어가 있어 밋밋했다).
+              원본은 자관 썸네일(잡아 둔 크롭 그대로), 그 외 AU는 그 AU의 첫 아트 = 대표 이미지.
+              등록된 이미지가 없으면 예전처럼 색 플레이스홀더가 그대로 나온다 */}
+          {rel.aus.map((a, i) => {
+            const isBase = a.id === 'base';
+            const thumb = isBase ? (rel.thumbId ?? rel.arts?.[0]) : a.arts?.[0];
+            return (
+              <div key={a.id} className={`au-item ${auId === a.id ? 'on' : ''}`}
+                onClick={() => { setAuId(a.id); setArtIdx(0); setQaNo(null); }}>
+                <CroppedBlobImg fileRef={thumb} crop={isBase ? rel.thumbCrop : undefined}
+                  ph={['cool', 'pale', 'red'][i % 3]} />
+                <small>{a.label}</small>
+              </div>
+            );
+          })}
           {isAdmin && (
             <div className="au-item add" data-tip="AU 추가/관리" onClick={() => setAuOpen(true)}>＋</div>
           )}
@@ -645,17 +701,46 @@ export default function RelDetailPage() {
         <div className="rel-admin-actions">
           {/* AU 선택 중이면 그 AU의 일러·캐치프레이즈를 편집 (v1.9) */}
           <button className="btn btn-dark" style={{ height: 30, padding: '0 13px', fontSize: 11 }}
-            onClick={() => router.push(`/rels/${rel.id}/edit${isBaseAu ? '' : `?au=${au!.id}`}`)}>EDIT</button>
+            onClick={() => router.push(`/rels/${rel.id}/edit${isBaseAu ? '' : `?au=${au!.id}`}`)}>
+            {isBaseAu ? 'EDIT' : `EDIT ${au!.label}`}
+          </button>
+          {/* AU를 보는 중이면 지워지는 것도 그 AU다 (v2.0 사용자 발견 — 자관이 통째로 지워졌다).
+              EDIT은 AU를 따라가는데 DELETE만 안 따라가서, AU 화면에서 누르면 자관 전체가 날아갔다.
+              버튼 글씨에도 무엇이 지워지는지 그대로 쓴다 */}
           <button className="btn btn-dark" style={{ height: 30, padding: '0 13px', fontSize: 11 }}
-            onClick={() => setDelAsk(true)}>DELETE</button>
+            onClick={() => (isBaseAu ? setDelAsk(true) : setAuDelAsk(au!.id))}>
+            {isBaseAu ? 'DELETE' : `DELETE ${au!.label}`}
+          </button>
         </div>
       )}
 
+      {/* AU 하나만 삭제 (v2.0 사용자 발견) — 자관 삭제와 확실히 구분되게 무엇이 남는지까지 적는다 */}
+      <ConfirmModal open={auDelAsk !== null}
+        title={`AU 「${rel.aus.find(a => a.id === auDelAsk)?.label ?? ''}」를 삭제하시겠습니까?`}
+        body="이 AU의 일러·타임라인·문답이 함께 삭제되며 복구할 수 없습니다. 자관과 다른 AU는 그대로 남습니다."
+        onClose={() => setAuDelAsk(null)}
+        buttons={[
+          { label: 'DELETE', kind: 'accent', onClick: () => {
+            const gone = auDelAsk!;
+            updateRel({ aus: rel.aus.filter(a => a.id !== gone) });
+            // 이 AU에 달렸던 문답 답변도 함께 (주인 없는 줄이 남지 않게)
+            setQaRows(qaRows.filter(r => !(r.relId === rel.id && r.auId === gone)));
+            if (auId === gone) setAuId('base');
+            setAuDelAsk(null);
+          } },
+          { label: 'CANCEL', kind: 'ghost', onClick: () => setAuDelAsk(null) },
+        ]} />
+
       <ConfirmModal open={delAsk} title="자관을 삭제하시겠습니까?"
-        body="타임라인·문답·AU 정보가 함께 삭제되며 복구할 수 없습니다. 연동된 캐릭터 자체는 삭제되지 않습니다."
+        body={`「${rel.name}」 자관 전체가 삭제됩니다 — 타임라인·문답·AU ${rel.aus.length}개가 모두 함께 사라지며 복구할 수 없습니다. 연동된 캐릭터 자체는 삭제되지 않습니다.`}
         onClose={() => setDelAsk(false)}
         buttons={[
-          { label: 'DELETE', kind: 'accent', onClick: () => { setRels(rels.filter(r => r.id !== rel.id)); router.push('/rels'); } },
+          { label: 'DELETE', kind: 'accent', onClick: () => {
+            setRels(rels.filter(r => r.id !== rel.id));
+            // 자관에 달렸던 문답 답변도 함께 (v2.0 — 따로 저장이라 남기면 주인 없는 줄이 된다)
+            setQaRows(qaRows.filter(r => r.relId !== rel.id));
+            router.push('/rels');
+          } },
           { label: 'CANCEL', kind: 'ghost', onClick: () => setDelAsk(false) },
         ]} />
 
@@ -669,18 +754,19 @@ export default function RelDetailPage() {
         {/* CP/NCP 뱃지 — 자관명 위 가운데 (v2.0 사용자 요청) · 색은 자관 수정에서 */}
         {auCpTag && (
           <div className="cp-top">
-            <span className="pill" style={rel.cpTagBg || rel.cpTagFg
-              ? { background: rel.cpTagBg, color: rel.cpTagFg, borderColor: rel.cpTagBg }
+            <span className="pill" style={auSt.cpTagBg || auSt.cpTagFg
+              ? { background: auSt.cpTagBg, color: auSt.cpTagFg, borderColor: auSt.cpTagBg }
               : undefined}>{CP_LABEL[auCpTag]}</span>
           </div>
         )}
         {/* 자관명·캐치프레이즈 글씨색 — 직접 지정 시 (v1.9 사용자 요청, 미지정: 테마) */}
         {/* 이름 그림자 — 색·강도 직접 지정 (v2.0 사용자 요청, 미지정: 검정 60% · 기존과 동일) */}
+        {/* 이름 자체는 AU마다 다르게 붙일 수 있다 (v2.0 사용자 요청) — 안 정했으면 자관 이름 그대로 */}
         <h1 style={{
-          fontFamily: familyOf(rel.fontId), color: rel.nameColor,
-          textShadow: `0 4px 30px ${withAlpha(rel.nameShadowColor ?? '#000000', 0.6 * ((rel.nameShadow ?? 100) / 100))}`,
-        }}>{rel.name}</h1>
-        <div className="catch" style={{ color: rel.cpColor }}>
+          fontFamily: familyOf(rel.fontId), color: auSt.nameColor,
+          textShadow: `0 4px 30px ${withAlpha(auSt.nameShadowColor ?? '#000000', 0.6 * ((auSt.nameShadow ?? 100) / 100))}`,
+        }}>{(!isBaseAu && au?.name?.trim()) || rel.name}</h1>
+        <div className="catch" style={{ color: auSt.cpColor }}>
           {au?.catchphrase || rel.catchphrase}
         </div>
         {isDuo && pairSlots[1] && (
@@ -706,7 +792,8 @@ export default function RelDetailPage() {
             {/* 전신 — 등록 이미지(AU별 우선) + 크기/앞뒤는 자관 수정의 미리보기에서 (v1.9) */}
             {pairSlots.map((sl, i) => {
               const cid = sl?.charId ?? '';
-              const m = rel.members.find(x => x.charId === cid);
+              // 전신 위치·크기도 AU 값 우선 (v2.0) — sl이 이미 AU 값으로 갈아 끼운 멤버다
+              const m = sl ?? rel.members.find(x => x.charId === cid);
               // AU는 자기 전신만 — base 전신을 물려받지 않음 (v1.9 사용자 확정)
               const fullRef = isBaseAu ? m?.fullImgId : au?.fulls?.[cid];
               if (!fullRef) return null;   // 등록 안 된 전신은 자리도 만들지 않는다
@@ -714,7 +801,8 @@ export default function RelDetailPage() {
               return (
                 <div key={i} className={`fb fb-${i === 0 ? 'l' : 'r'}`}
                   style={{ background: 'transparent', zIndex: front ? 3 : 2 }}>
-                  <FullImg refId={fullRef} scale={m?.fullScale ?? 90} offX={m?.fullOffX ?? 0} offY={m?.fullOffY ?? 0} />
+                  <FullImg refId={fullRef} scale={m?.fullScale ?? 90} offX={m?.fullOffX ?? 0} offY={m?.fullOffY ?? 0}
+                    shadow={fullShadow(auSt.nameShadowColor, auSt.nameShadow)} />
                 </div>
               );
             })}
@@ -739,8 +827,8 @@ export default function RelDetailPage() {
                 전신이 하나도 없으면 고를 것이 없으므로 스위치 자체를 숨긴다 */}
             {hasFull && (
               <div className="illu-toggle seg" style={{
-                ['--illu-bg' as string]: rel.illuBg,
-                ['--illu-on' as string]: rel.illuOn,
+                ['--illu-bg' as string]: auSt.illuBg,
+                ['--illu-on' as string]: auSt.illuOn,
               } as React.CSSProperties}>
                 <button className={!single ? 'on' : ''} onClick={() => setOneMode(false)}>전신</button>
                 <button className={single ? 'on' : ''} onClick={() => setOneMode(true)}>일러스트</button>
@@ -783,8 +871,8 @@ export default function RelDetailPage() {
                       <>
                         <b style={{ fontFamily: familyOf(c.fontId) }}>{c.name}</b><i>{c.sub}</i>
                         <small>{c.specs.slice(0, 3).map(s => s.value).join(' · ')}</small>
-                        {(m.quote || m.linkedNote || m.keywords[0]) && (
-                          <span className="ext">{m.quote || m.linkedNote || m.keywords[0]}</span>
+                        {(m.quote || noteOf(m) || m.keywords[0]) && (
+                          <span className="ext">{m.quote || noteOf(m) || m.keywords[0]}</span>
                         )}
                       </>
                     )}
@@ -855,11 +943,12 @@ export default function RelDetailPage() {
                       data-tip="이 질문을 버리고 다음 질문으로"
                       onClick={skipQuestion}>질문 건너뛰기</button>
                   )}
-                  {/* 현재 질문 완료 → 대기 풀에서 랜덤 출제 (v1.9) */}
+                  {/* 대기 풀에서 랜덤 출제 (v1.9) — 리스트를 넣어도 자동 출제되지 않으므로(v2.0)
+                      아직 받은 질문이 없을 때는 「질문 받기」로 문구를 바꿔 이 버튼이 시작점임을 알린다 */}
                   {auQaPool.length > 0 && (
-                    <button className="btn btn-ghost" style={{ height: 35, padding: '0 14px', fontSize: 11.5 }}
+                    <button className={curQa ? 'btn btn-ghost' : 'btn btn-dark'} style={{ height: 35, padding: '0 14px', fontSize: 11.5 }}
                       data-tip={`대기 질문 ${auQaPool.length}개`}
-                      onClick={drawNextQuestion}>완료 — 다음 질문</button>
+                      onClick={drawNextQuestion}>{curQa ? '완료 — 다음 질문' : '질문 받기'}</button>
                   )}
                   <button className="btn btn-dark" style={{ height: 35, padding: '0 14px', fontSize: 11.5 }} onClick={() => setQOpen(true)}>＋ ADD QUESTION</button>
                 </>}
@@ -930,7 +1019,7 @@ export default function RelDetailPage() {
                   {curQa.note && <div className="qa-note">{curQa.note}</div>}
                   {/* 날짜만, 오른쪽 정렬 (v1.9 사용자 피드백) */}
                   <div className="qa-date" style={{ textAlign: 'right' }}>{curQa.date.replace(/-/g, '.')}</div>
-                  {curQa.answers.map((a, i) => {
+                  {curAnswers.map((a, i) => {
                     const c = charOf(a.charId);
                     return (
                       <div key={i} className={`qa-ans ${sideOf(a.charId) === 'r' ? 'r' : ''}`}
@@ -1005,7 +1094,7 @@ export default function RelDetailPage() {
                 {qaFiltered.map(q => (
                   <div key={q.no} className={`qa-item ${curQa?.no === q.no ? 'on' : ''}`} onClick={() => setQaNo(q.no)}>
                     <b>Q.{String(q.no).padStart(3, '0')} {q.q}</b>
-                    <small>{q.date.slice(5).replace('-', '.')} · 답변 {q.answers.length}</small>
+                    <small>{q.date.slice(5).replace('-', '.')} · 답변 {answersOf(q.no).length}</small>
                   </div>
                 ))}
               </div>
@@ -1147,8 +1236,21 @@ export default function RelDetailPage() {
           {rel.aus.map(a => (
             <div key={a.id} style={{ display: 'grid', gap: 7, padding: '9px 11px', border: '1.5px solid var(--line)', borderRadius: 8 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <b style={{ fontSize: 12.5, flexShrink: 0 }}>{a.label}</b>
-                <small style={{ color: 'var(--faint)', fontSize: 10.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.catchphrase}</small>
+                {/* AU 이름·캐치프레이즈는 등록할 때만 받고 그 뒤로는 고칠 곳이 없었다 (v2.0 사용자 발견).
+                    등록 폼과 같은 자리에서 바로 고치게 한다 — 자관 질문 세트 이름과 같은 방식 */}
+                <KInput value={a.label}
+                  onChange={e => updateRel({ aus: rel.aus.map(x => (x.id === a.id ? { ...x, label: e.target.value } : x)) })}
+                  style={{ width: 110, fontSize: 12, padding: '5px 9px', flexShrink: 0 }} />
+                <KInput value={a.id === 'base' ? rel.catchphrase : a.catchphrase} placeholder="캐치프레이즈"
+                  onChange={e => {
+                    const v = e.target.value;
+                    // 원본의 캐치프레이즈는 자관 본체에 있다 — 둘이 어긋나지 않게 함께 고친다
+                    updateRel({
+                      ...(a.id === 'base' ? { catchphrase: v } : {}),
+                      aus: rel.aus.map(x => (x.id === a.id ? { ...x, catchphrase: v } : x)),
+                    });
+                  }}
+                  style={{ fontSize: 11.5, padding: '5px 9px', minWidth: 0, flex: 1 }} />
                 {/* AU별 CP/NCP — 이름 줄 오른쪽 정렬 (v1.9 사용자 요청) */}
                 <div className="mini-seg" style={{ marginLeft: 'auto', flexShrink: 0 }}>
                   {(['cp', 'ncp'] as RelCpTag[]).map(t => (
@@ -1227,7 +1329,7 @@ export default function RelDetailPage() {
       </Modal>
       {/* 답변 수정·오너 부연 (v1.9) — 텍스트는 작성자 본인, 부연설명은 관리자 */}
       <Modal open={ansEdit !== null} onClose={() => setAnsEdit(null)} small
-        title={ansEdit && canEditAns(curQa?.answers[ansEdit.idx] ?? { charId: '', text: '' }) ? '답변 수정' : '오너 부연설명'}
+        title={ansEdit && canEditAns(curAnswers[ansEdit.idx] ?? { charId: '', text: '' }) ? '답변 수정' : '오너 부연설명'}
         dirty={!!ansEdit}
         actions={<>
           <button className="btn btn-ghost" onClick={() => setAnsEdit(null)}>CANCEL</button>
@@ -1235,7 +1337,7 @@ export default function RelDetailPage() {
         </>}>
         {ansEdit && (
           <div style={{ display: 'grid', gap: 9 }}>
-            {canEditAns(curQa?.answers[ansEdit.idx] ?? { charId: '', text: '' }) && (
+            {canEditAns(curAnswers[ansEdit.idx] ?? { charId: '', text: '' }) && (
               <KTextarea value={ansEdit.text} onChange={e => setAnsEdit(s => s && { ...s, text: e.target.value })}
                 style={{ minHeight: 60 }} />
             )}
@@ -1283,9 +1385,9 @@ export default function RelDetailPage() {
         document.body,
       )}
 
-      {ansCtx && curQa && curQa.answers[ansCtx.idx] && createPortal(
+      {ansCtx && curQa && curAnswers[ansCtx.idx] && createPortal(
         (() => {
-          const a = curQa.answers[ansCtx.idx];
+          const a = curAnswers[ansCtx.idx];
           return (
             <div className="ctx-menu on" style={{ left: ansCtx.x, top: ansCtx.y }} onClick={e => e.stopPropagation()}>
               <div className="ctx-ttl">{charOf(a.charId)?.name ?? '답변'}</div>

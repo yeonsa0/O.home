@@ -4,7 +4,10 @@
 import React, { Suspense, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
-import { useLocalList, BOARD_SEED, Post, fmtDate } from '@/lib/postStore';
+import {
+  useLocalList, BOARD_SEED, Post, fmtDate,
+  CommentRow, COMMENT_KEY, COMMENT_SEED, commentsFor,
+} from '@/lib/postStore';
 import {
   useBoardSettings, useBoards, badgeFor, boardBadgeStyle, boardHref, MAIN_BOARD_ID, BoardPerm,
 } from '@/lib/boardStore';
@@ -30,6 +33,9 @@ function BoardInner() {
   const { boards, loaded: boardsLoaded } = useBoards();
   const board = boards.find(b => b.id === bid) ?? boards[0];
   const [posts] = useLocalList<Post>('ohome.board.v1', BOARD_SEED);
+  // 댓글 수 — 댓글은 글과 따로 저장된다 (v2.0). 옛 글 안에 남아 있던 것도 함께 센다
+  const [cmtRows] = useLocalList<CommentRow>(COMMENT_KEY, COMMENT_SEED);
+  const cmtCount = (p: Post) => commentsFor(cmtRows, 'post', p.id, p.comments).length;
   const { st: boardSet } = useBoardSettings();   // 시스템 뱃지 색 (환경설정 > 게시판 관리)
   const [cat, setCat] = useState('전체');
   const [q, setQ] = useState('');
@@ -110,7 +116,7 @@ function BoardInner() {
                   </div>
                   <div className="bt-title">
                     {canRead(p) ? <>{p.secret && '🔒 '}{p.title}</> : '🔒 비밀글입니다'}
-                    {canRead(p) && p.comments.length > 0 && <span className="cmt">{p.comments.length}</span>}
+                    {canRead(p) && cmtCount(p) > 0 && <span className="cmt">{cmtCount(p)}</span>}
                   </div>
                   <div className="bt-meta">{p.author} · {fmtDate(p.date)}</div>
                 </div>
@@ -130,7 +136,7 @@ function BoardInner() {
               {canRead(p) ? (
                 <b>
                   {p.secret && '🔒 '}{p.title}
-                  {p.comments.length > 0 && <span className="cmt">{p.comments.length}</span>}
+                  {cmtCount(p) > 0 && <span className="cmt">{cmtCount(p)}</span>}
                   {p.fold && <span style={{ ...boardBadgeStyle(boardSet.system[2]), marginLeft: 6 }}>{boardSet.system[2].label}</span>}
                 </b>
               ) : (

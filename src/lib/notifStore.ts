@@ -13,6 +13,18 @@ export interface Notif {
   href: string;              // 클릭 시 이동
   date: string;
   read: boolean;
+  readAt?: string;           // 읽은 시각 — 하루 지나면 목록에서 정리 (v2.0 사용자 요청)
+}
+
+/** 읽고 하루가 지난 알림은 목록에서 치운다 (v2.0 사용자 요청).
+ *  안 읽은 알림은 아무리 오래돼도 남는다 — 놓친 것을 임의로 지우면 안 되니까. */
+const KEEP_READ_MS = 24 * 60 * 60 * 1000;
+export function pruneNotifs(list: Notif[], now = Date.now()): Notif[] {
+  return list.filter(n => {
+    if (!n.read) return true;
+    const t = Date.parse(n.readAt ?? '');
+    return !Number.isFinite(t) || now - t < KEEP_READ_MS;
+  });
 }
 
 const KEY = 'ohome.notif.v1';
@@ -24,7 +36,15 @@ export const NOTIF_TYPE_LABEL: Record<NotifType, string> = {
 };
 
 export function readNotifs(): Notif[] {
-  try { return JSON.parse(localStorage.getItem(KEY) ?? '[]'); } catch { return []; }
+  try {
+    const all = JSON.parse(localStorage.getItem(KEY) ?? '[]') as Notif[];
+    const kept = pruneNotifs(all);
+    // 정리된 게 있으면 저장까지 (다음 번에 또 훑지 않게) — 여기서 이벤트를 쏘면 렌더 중 갱신이 되어 안 쏜다
+    if (kept.length !== all.length) {
+      try { localStorage.setItem(KEY, JSON.stringify(kept)); } catch { /* 무시 */ }
+    }
+    return kept;
+  } catch { return []; }
 }
 
 function write(list: Notif[]) {
@@ -74,11 +94,18 @@ export function pushNotif(n: {
 }
 
 export function markRead(id: string) {
-  write(readNotifs().map(n => (n.id === id ? { ...n, read: true } : n)));
+  const at = new Date().toISOString();
+  write(readNotifs().map(n => (n.id === id ? { ...n, read: true, readAt: n.readAt ?? at } : n)));
 }
 
 export function markAllRead(userId: string) {
-  write(readNotifs().map(n => (n.toUserId === userId ? { ...n, read: true } : n)));
+  const at = new Date().toISOString();
+  write(readNotifs().map(n => (n.toUserId === userId ? { ...n, read: true, readAt: n.readAt ?? at } : n)));
+}
+
+/** 읽은 알림 지금 바로 정리 (v2.0 사용자 요청 — 하루를 기다리지 않고 손으로) */
+export function clearReadNotifs(userId: string) {
+  write(readNotifs().filter(n => !(n.toUserId === userId && n.read)));
 }
 
 export function removeNotif(id: string) {

@@ -44,6 +44,10 @@ export interface ThemeVars {
   // 스위치 탭 (v2.0 사용자 요청) — 게시판 말머리·갤러리 보기 전환 등. 고른 쪽은 진한 버튼색을 그대로 따라가고
   // 여기서 정하는 것은 「안 고른 쪽」의 판 배경과 글씨색
   segBg?: string; segFg?: string;
+  // 위젯 (v2.0 사용자 요청) — 메인·사이드에 얹히는 카드. 미지정이면 카드 색을 그대로 따라간다.
+  // wgBorder를 켜야 테두리를 그린다(기본은 그림자만, 지금까지의 모습)
+  wgBg?: string; wgTitle?: string; wgFg?: string;
+  wgBorder?: boolean; wgBd?: string;
   // 이미지 편집(크롭) 배경 (v1.9 사용자 피드백) — 투명 PNG 위치 지정 시 보이는 판
   cropBg?: string;
   // 입력 포커스 (v1.9 사용자 요청) — 인풋·텍스트에리어·드롭다운·에디터 공통
@@ -264,6 +268,14 @@ export function themeToCssVars(t: ThemeVars): Record<string, string> {
     // 스위치 탭 — 안 고른 쪽 (v2.0) · 고른 쪽은 --btn-dark 3색을 그대로 쓴다
     '--seg-bg': t.segBg ?? '#f0f1f3',
     '--seg-fg': t.segFg ?? '#8a8f98',
+    // 위젯 (v2.0 사용자 요청) — 안 정하면 카드 색을 그대로 따라간다(지금까지의 모습).
+    // 배경만 반투명 처리하는 것은 카드와 같은 규칙 — 배경 이미지를 깔았을 때 비쳐 보이게 한다
+    '--wg-bg': t.wgBg ? withAlpha(t.wgBg, 0.94) : withAlpha(t.cardBg ?? '#fcfcfd', 0.94),
+    '--wg-title': t.wgTitle ?? 'var(--faint)',
+    '--wg-fg': t.wgFg ?? 'var(--ink)',
+    // 테두리는 켤 때만 그린다 — 끄면 0이라 지금까지처럼 그림자만 남는다
+    '--wg-bd-w': t.wgBorder ? '1px' : '0px',
+    '--wg-bd': t.wgBd ?? 'var(--line)',
     '--radius': `${t.radius}px`, '--radius-s': `${t.radiusS}px`,
   };
 }

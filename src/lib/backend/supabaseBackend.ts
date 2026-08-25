@@ -132,8 +132,8 @@ export async function createSupabaseBackend(
     async syncList<T extends ListItem>(coll: string, prev: T[], next: T[], uid: string | null) {
       const { inserts, updates, deletes } = diffList(prev, next);
       const toRow = ({ item, sort }: { item: T; sort: number }) => {
-        const { authorId, visibility } = metaOf(item, uid);
-        return { id: item.id, data: item, author_id: authorId, visibility, sort };
+        const { authorId, visibility, editorIds } = metaOf(item, uid);
+        return { id: item.id, data: item, author_id: authorId, visibility, editor_ids: editorIds, sort };
       };
       if (inserts.length) {
         const { error } = await sb.from(coll).insert(inserts.map(toRow));
