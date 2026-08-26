@@ -10,7 +10,8 @@ import React from 'react';
 import { DragList } from '@/components/ui/DragList';
 import { KInput } from '@/components/ui/Kit';
 import { useConfirmDelete } from '@/components/ui/Modal';
-import { SectionKind, SECTION_META, SECTION_KINDS, MAIN_SEC, useSections } from '@/lib/sectionStore';
+import { SectionKind, SECTION_META, SECTION_KINDS, MAIN_SEC, useSections, sectionHref, cleanSlug } from '@/lib/sectionStore';
+import { useMenuSettings } from '@/lib/menuStore';
 
 /**
  * 종류를 골라 그 목록만 보여 준다 — 8종을 한꺼번에 펼치면 탭이 끝없이 길어진다.
@@ -43,6 +44,7 @@ export function SectionsBlock() {
 
 export function SectionList({ kind }: { kind: SectionKind }) {
   const { list, setList, add } = useSections();
+  const [ms, patchMenu] = useMenuSettings();
   const del = useConfirmDelete();
   const items = list(kind);
   const meta = SECTION_META[kind];
@@ -52,20 +54,56 @@ export function SectionList({ kind }: { kind: SectionKind }) {
     setList(kind, cur);
   };
 
+  /* 주소 별명 (v2.0 사용자 요청) — `?s=mt9ipt` 대신 `?s=fanart`처럼.
+     **소속 표시는 계속 id로 저장하므로 글은 그대로 있다.** 다만 메뉴 트리에는 주소가
+     문자열로 적혀 있어서, 별명을 바꾸면 그 자리도 같이 고쳐 줘야 배치가 풀리지 않는다. */
+  const patchSlug = (id: string, raw: string) => {
+    const slug = cleanSlug(raw);
+    const taken = items.some(s => s.id !== id && (s.slug === slug || s.id === slug));
+    if (slug && taken) return;                    // 다른 것과 겹치면 그대로 둔다
+    const before = sectionHref(kind, id);
+    setList(kind, items.map(s => (s.id === id ? { ...s, slug: slug || undefined } : s)));
+    const after = kind && (id === MAIN_SEC ? before : `${meta.href}?s=${slug || id}`);
+    if (before === after) return;
+    const swap = (h: string) => (h === before ? after : h);
+    patchMenu({
+      tree: (ms.tree ?? []).map(g => ({
+        ...g,
+        ...(g.href ? { href: swap(g.href) } : {}),
+        items: g.items.map(it => ({ ...it, href: swap(it.href) })),
+      })),
+      removedBoards: (ms.removedBoards ?? []).map(swap),
+    });
+  };
+
   return (
     <>
       <h3 style={{ marginTop: 20 }}>{meta.label} 목록</h3>
       <div className="d">
         같은 유형을 여러 개 — ⠿ 드래그로 메뉴 순서 · 이름은 상단 메뉴와 페이지 제목에 그대로 표시 ·
         아래 세부 설정은 모든 {meta.label}가 함께 씁니다
+        <br />
+        <b>주소</b>는 영소문자·숫자·하이픈만 쓸 수 있고, 비우면 내부 id가 그대로 주소에 나옵니다 —
+        바꿔도 글은 그대로 있고 예전 주소로 들어와도 열립니다.
+        <br />
+        새로 만들면 <b>메뉴 관리의 「미배치」</b>에 놓입니다 — 원하는 상위 메뉴에 직접 넣어 주세요
       </div>
       <DragList items={items} keyOf={s => s.id} onReorder={next => setList(kind, next)}
         render={s => (
           <div className="set-row" style={{ width: '100%' }}>
             <div className="l" style={{ display: 'flex', gap: 11, alignItems: 'center' }}>
               <span className="drag-h">⠿</span>
-              <KInput value={s.name} onChange={e => patch(s.id, e.target.value)} style={{ width: 150 }} />
-              {s.id === MAIN_SEC && <span className="pill">기본</span>}
+              <KInput value={s.name} onChange={e => patch(s.id, e.target.value)} style={{ width: 130 }} />
+              {s.id === MAIN_SEC
+                ? <span className="pill">기본</span>
+                : (
+                  <>
+                    <span className="cp-lb">주소</span>
+                    <KInput value={s.slug ?? ''} placeholder={s.id}
+                      onChange={e => patchSlug(s.id, e.target.value)} style={{ width: 120 }} />
+                    <small style={{ color: 'var(--faint)', fontSize: 10.5 }}>{sectionHref(kind, s.id)}</small>
+                  </>
+                )}
             </div>
             <div className="cp-group" style={{ justifyContent: 'flex-end' }}>
               {s.id !== MAIN_SEC && (

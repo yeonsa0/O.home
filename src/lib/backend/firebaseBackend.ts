@@ -9,6 +9,7 @@
 import {
   Backend, BackendCheck, BackendConfig, BackendUser, ListItem, diffList, metaOf,
 } from './types';
+import { visFloorOf } from '../visFloor';
 
 type FirebaseCfg = Extract<BackendConfig, { kind: 'firebase' }>;
 
@@ -290,7 +291,7 @@ export async function createFirebaseBackend(cfg: FirebaseCfg): Promise<Backend> 
       for (const part of chunk(ops, 400)) {
         const batch = writeBatch(db);
         part.forEach(({ item, sort }) => {
-          const { authorId, visibility, editorIds } = metaOf(item, uid);
+          const { authorId, visibility, editorIds } = metaOf(item, uid, visFloorOf(coll, item));
           batch.set(doc(db, coll, item.id), {
             data: item, authorId, visibility, editorIds, sort, updatedAt: Date.now(),
           });
@@ -302,6 +303,22 @@ export async function createFirebaseBackend(cfg: FirebaseCfg): Promise<Backend> 
         part.forEach(id => batch.delete(doc(db, coll, id)));
         await batch.commit();
       }
+    },
+
+    /* 공개범위만 다시 계산해 덮어쓰기 (v2.0) — data·sort는 손대지 않는다 */
+    async refreshVis<T extends ListItem>(coll: string, items: T[], uid: string | null): Promise<number> {
+      let n = 0;
+      for (let i = 0; i < items.length; i += 400) {
+        const part = items.slice(i, i + 400);
+        const batch = writeBatch(db);
+        part.forEach(it => {
+          const { visibility } = metaOf(it, uid, visFloorOf(coll, it));
+          batch.update(doc(db, coll, it.id), { visibility, updatedAt: Date.now() });
+        });
+        await batch.commit();
+        n += part.length;
+      }
+      return n;
     },
 
     subscribe(coll, onChange) {

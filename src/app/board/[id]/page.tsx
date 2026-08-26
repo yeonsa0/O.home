@@ -2,6 +2,8 @@
 // 게시글 상세 (4.2) — 본문 렌더(격리 새니타이즈) · 접기 · 댓글+대댓글
 import React, { useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import { useHrefBlock } from '@/components/shell/MenuGuard';
+import { extraBoardHref } from '@/lib/menuStore';
 import { useAuth } from '@/lib/auth';
 import {
   useLocalList, BOARD_SEED, Post, Comment, newId, fmtDate,
@@ -37,9 +39,16 @@ export default function BoardDetailPage() {
   const [pwInput, setPwInput] = useState('');
 
   const post = posts.find(p => p.id === id);
+  /* 이 글이 속한 곳이 비공개면 주소로 들어와도 열리지 않게 (v2.0 사용자 요청).
+     글 주소에는 섹션이 없어 MenuGuard가 못 막는다 — 글을 읽어 소속을 알아낸 여기서 판정한다.
+     **다른 early return보다 먼저 불러야 한다**(훅이므로 렌더마다 개수가 같아야 한다) */
+  const bid = post?.boardId ?? MAIN_BOARD_ID;
+  const blocked = useHrefBlock(post && (bid === MAIN_BOARD_ID ? '/board' : extraBoardHref(bid)));
   // loaded 이후에만 본문 렌더 (SSR/하이드레이션 불일치 방지)
   const html = useMemo(() => (post && loaded ? renderBody(post.mode, post.body) : ''), [post, loaded]);
 
+  // 막힌 곳이면 여기서 되돌아간다 — 훅을 모두 부른 뒤여야 렌더마다 개수가 같다
+  if (blocked) return blocked;
   if (!loaded) return <section className="page" />;
   if (!post) {
     return (
@@ -48,7 +57,10 @@ export default function BoardDetailPage() {
       </section>
     );
   }
-  if (post.secret && !isAdmin && post.authorId !== user?.id) {
+  /* 글쓴이인지 한 곳에서 정한다 (v2.0 발견) — 예전 글이나 손님이 쓴 글은 authorId가 없고
+     비로그인 방문자도 user?.id가 없어, 서로 「같다」고 판정돼 **비밀글이 그대로 열렸다.** */
+  const isAuthor = !!post.authorId && post.authorId === user?.id;
+  if (post.secret && !isAdmin && !isAuthor) {
     return (
       <section className="page">
         <div className="page-head"><PageTitle>BOARD</PageTitle><p>비밀글 — 작성자와 관리자만 열람할 수 있습니다</p></div>
@@ -63,7 +75,7 @@ export default function BoardDetailPage() {
   const guestMode = !user && board.permComment === 'guest';
   const canComment = allow(board.permComment) && (!!user || guestMode);
 
-  const canManage = isAdmin || post.authorId === user?.id;
+  const canManage = isAdmin || isAuthor;
   const update = (patch: Partial<Post>) =>
     setPosts(posts.map(p => (p.id === post.id ? { ...p, ...patch } : p)));
 
@@ -127,7 +139,7 @@ export default function BoardDetailPage() {
         <p>{post.notice ? '공지 · ' : `${post.category} · `}{post.author} · {fmtDate(post.date)}</p>
         <div className="head-actions">
           {/* 수정은 작성자 본인만 — 관리자도 타인 글은 삭제만 (v1.9) */}
-          {post.authorId === user?.id && (
+          {isAuthor && (
             <button className="btn btn-dark" onClick={() => router.push(`/board/write?edit=${post.id}`)}>EDIT</button>
           )}
           {canManage && (

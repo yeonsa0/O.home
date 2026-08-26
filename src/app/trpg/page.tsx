@@ -1,9 +1,10 @@
 'use client';
 // TRPG 로그 백업 (4.3) — 티켓형/기본형 스킨 · 우측 자관 뱃지 필터 · ＋ ADD LOG
 // 본문 입력 3방식: 파일 업로드(.txt/.html 내용 자동 판별) / HTML 붙여넣기 / 직접 작성
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
+import { useSectionParam, filterSection, sectionSetter, secStamp } from '@/lib/sectionStore';
 import { useLocalList, newId } from '@/lib/postStore';
 import { TrpgLog, TRPG_SEED, TrpgLogBody, TRPG_BODY_SEED, bodyVisibility, decodeLogText, logNo, saveLogBody } from '@/lib/galleryStore';
 import { Relation, REL_SEED } from '@/lib/charStore';
@@ -21,12 +22,17 @@ import { mergeOrder } from '@/lib/cardSort';
 import { DragList } from '@/components/ui/DragList';
 import { OrderMenu, orderNoOf, moveToOrder } from '@/components/ui/OrderMenu';
 
-export default function TrpgPage() {
+function TrpgPageInner() {
   const router = useRouter();
   const { user, isAdmin } = useAuth();
   const toast = useToast();
   const [site] = useSiteSettings(); // 티켓 하단 문구 = 로고 서브타이틀 (5.2 연동)
-  const [logs, setLogs] = useLocalList<TrpgLog>('ohome.trpg.v1', TRPG_SEED);
+  const [logsAll, setLogsAll] = useLocalList<TrpgLog>('ohome.trpg.v1', TRPG_SEED);
+  // 여러 개로 만든 섹션 (v2.0) — 주소의 ?s= 가 가리키는 것만 보여 준다
+  const sec = useSectionParam('trpg');
+  const logs = filterSection(logsAll, sec.id);
+  // 저장은 이 섹션 자리만 교체 — 걸러진 목록을 그대로 넘겨도 다른 섹션이 지워지지 않는다
+  const setLogs = sectionSetter(logsAll, sec.id, setLogsAll);
   // 본문은 목록과 분리 저장 (v2.0) — 나만보기 로그도 목록엔 뜨게 하려고 목록 문서의 질의 조건이
   // listHidden으로 느슨해졌는데, 본문까지 같이 있으면 그 질의로 본문도 함께 새어 나간다
   const [bodies, setBodies] = useLocalList<TrpgLogBody>('ohome.trpgbody.v1', TRPG_BODY_SEED);
@@ -208,6 +214,7 @@ export default function TrpgPage() {
       originalFileId: nFile ? await putBlob(nFile) : undefined,
       originalName: nFile?.name,
       visibility: bodyVisibility(log),
+      ...secStamp(sec.id),   // 소속 (v2.0) — 본문 문서도 비공개 판정을 받게
     };
     setLogs([log, ...logs]);
     setBodies([body, ...bodies]);
@@ -258,7 +265,7 @@ export default function TrpgPage() {
   return (
     <section className="page">
       <div className="page-head">
-        <PageTitle>TRPG LOG</PageTitle>
+        <PageTitle>{sec.id === 'main' ? 'TRPG LOG' : sec.name}</PageTitle>
         <EditableDesc k="trpg-desc" def="티켓형 스킨 · 시나리오 타이틀 폰트 개별 설정 · 우측 자관 뱃지로 필터" />
         <div className="head-actions">
           <SearchBar onSearch={setQ} />
@@ -467,4 +474,9 @@ export default function TrpgPage() {
       )}
     </section>
   );
+}
+
+/** ?s= 를 읽으므로 Suspense 경계가 필요하다 (Next App Router) */
+export default function TrpgPage() {
+  return <Suspense fallback={<section className="page" />}><TrpgPageInner /></Suspense>;
 }

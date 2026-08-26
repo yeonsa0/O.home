@@ -60,6 +60,9 @@ export interface Backend {
   /* ---- 목록(콘텐츠) ---- */
   fetchList<T extends ListItem>(coll: string): Promise<T[]>;
   syncList<T extends ListItem>(coll: string, prev: T[], next: T[], uid: string | null): Promise<void>;
+  /** 이미 저장된 행의 공개범위만 다시 계산해 덮어쓴다 (v2.0) — 메뉴를 비공개로 바꾼 뒤
+   *  「글에도 적용」을 누르면 돈다. 내용(data)·순서(sort)는 건드리지 않는다. */
+  refreshVis<T extends ListItem>(coll: string, items: T[], uid: string | null): Promise<number>;
   subscribe(coll: string, onChange: () => void): () => void;
 
   /* ---- 설정(key/value) ---- */
@@ -140,13 +143,18 @@ export function diffList<T extends ListItem>(prev: T[], next: T[]) {
  *  목록에는 표시돼야해"). Firestore·Supabase RLS 둘 다 list/get을 같은 규칙으로 묶어 판단하므로,
  *  이 필드가 있는 문서에는 민감한 내용(본문 등)을 절대 함께 두면 안 된다 — 질의로 노출되면
  *  단일 조회 권한도 함께 열리기 때문. (그래서 TRPG 로그는 본문을 별도 문서로 분리해 저장한다.) */
-export function metaOf(item: ListItem, uid: string | null) {
+export function metaOf(item: ListItem, uid: string | null, floor = 'public') {
   const rawAuthor = typeof item.authorId === 'string' ? item.authorId : '';
   const authorId = rawAuthor || uid || null;
   const hasListHidden = typeof item.listHidden === 'boolean';
-  const visibility = hasListHidden
+  const own = hasListHidden
     ? (item.listHidden ? 'private' : 'public')
     : (typeof item.visibility === 'string' ? item.visibility : 'public');
+  /* 메뉴를 비공개로 둔 곳의 글은 그 기준까지 좁혀 저장한다 (v2.0 사용자 요청 — visFloor 참조).
+     **좁히기만 한다** — 글이 이미 더 좁으면 그대로다. 게시판 글처럼 visibility 칸이 아예 없는
+     종류도 여기서 정해지므로, 서버가 내주지 않는 것은 화면과 무관하게 보장된다. */
+  const rank: Record<string, number> = { public: 0, member: 1, private: 2 };
+  const visibility = (rank[floor] ?? 0) > (rank[own] ?? 0) ? floor : own;
   return { authorId, visibility, editorIds: editorIdsOf(item) };
 }
 

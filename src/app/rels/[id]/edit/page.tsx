@@ -56,6 +56,7 @@ function RelEditInner() {
                 headerBgG1: v.headerBgG1, headerBgG2: v.headerBgG2, headerBgAngle: v.headerBgAngle,
                 pageBgG1: v.pageBgG1, pageBgG2: v.pageBgG2, pageBgAngle: v.pageBgAngle }),
             cp: v.cp,
+            qaHide: v.qaHide,
             fullFront: v.fullFront ?? r.fullFront,
             illustMode: v.kind === 'pair' ? r.illustMode : 'one',
             // 전신 크기·위치·한마디·대사 색 — **AU를 편집 중이면 자관 공통을 건드리지 않는다**

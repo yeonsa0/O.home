@@ -5,6 +5,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import {
   Backend, BackendCheck, BackendConfig, BackendUser, ListItem, diffList, metaOf,
 } from './types';
+import { visFloorOf } from '../visFloor';
 
 const BUCKET = 'ohome';
 const PROBE = ['profiles', 'site_settings', 'posts', 'characters'];
@@ -132,7 +133,7 @@ export async function createSupabaseBackend(
     async syncList<T extends ListItem>(coll: string, prev: T[], next: T[], uid: string | null) {
       const { inserts, updates, deletes } = diffList(prev, next);
       const toRow = ({ item, sort }: { item: T; sort: number }) => {
-        const { authorId, visibility, editorIds } = metaOf(item, uid);
+        const { authorId, visibility, editorIds } = metaOf(item, uid, visFloorOf(coll, item));
         return { id: item.id, data: item, author_id: authorId, visibility, editor_ids: editorIds, sort };
       };
       if (inserts.length) {
@@ -147,6 +148,28 @@ export async function createSupabaseBackend(
         const { error } = await sb.from(coll).delete().in('id', deletes);
         if (error) throw error;
       }
+    },
+
+    /* 공개범위만 다시 계산해 덮어쓰기 (v2.0) — 같은 값이 될 것들끼리 묶어 한 번에 UPDATE 한다.
+       data를 다시 쓰지 않으므로 내용·순서가 흔들리지 않는다 */
+    async refreshVis<T extends ListItem>(coll: string, items: T[], uid: string | null): Promise<number> {
+      const byVis = new Map<string, string[]>();
+      items.forEach(it => {
+        const { visibility } = metaOf(it, uid, visFloorOf(coll, it));
+        const arr = byVis.get(visibility) ?? [];
+        arr.push(it.id);
+        byVis.set(visibility, arr);
+      });
+      let n = 0;
+      for (const [vis, ids] of byVis) {
+        for (let i = 0; i < ids.length; i += 200) {
+          const part = ids.slice(i, i + 200);
+          const { error } = await sb.from(coll).update({ visibility: vis }).in('id', part);
+          if (error) throw error;
+          n += part.length;
+        }
+      }
+      return n;
     },
 
     subscribe(coll, onChange) {

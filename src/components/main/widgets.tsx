@@ -4,7 +4,9 @@ import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { WidgetConf, useMainStore, WIDGET_META, decoSlides } from '@/lib/mainStore';
 import { useAuth } from '@/lib/auth';
-import { boardEntries, useMenuSettings, buildMenu } from '@/lib/menuStore';
+import { boardEntries, useMenuSettings, buildMenu, canViewHref } from '@/lib/menuStore';
+import { sectionHref, MAIN_SEC, useSections, sectionMenuEntries } from '@/lib/sectionStore';
+import { useCustomLinks, linkEntries } from '@/lib/linkStore';
 import { useBoards } from '@/lib/boardStore';
 import { Modal } from '@/components/ui/Modal';
 import { KTextarea, KSelect, KStep, KCheck } from '@/components/ui/Kit';
@@ -105,9 +107,13 @@ export function MenuListWidget() {
   const [menuSet, , menuLoaded] = useMenuSettings(); // 메뉴 관리 (5.2) 반영
   const { boards, loaded: boardsLoaded } = useBoards(); // 다중 게시판 (5.2)
   const { user: wUser, isAdmin: wIsAdmin } = useAuth(); // 공개범위 필터 (v1.9)
+  const { map: wSecMap } = useSections();      // 여러 개로 만든 섹션 (v2.0 — 빠져 있었다)
+  const { links: wLinks } = useCustomLinks();  // 커스텀 링크 (v2.0)
   return (
     <div className="panel menu-list wgt-menu">
-      {(menuLoaded && boardsLoaded ? buildMenu(menuSet, boardEntries(boards), { loggedIn: !!wUser, isAdmin: wIsAdmin }) : []).map(m =>
+      {(menuLoaded && boardsLoaded
+        ? buildMenu(menuSet, [...boardEntries(boards), ...sectionMenuEntries(wSecMap), ...linkEntries(wLinks)], { loggedIn: !!wUser, isAdmin: wIsAdmin })
+        : []).map(m =>
         m.children ? (
           <div key={m.label} className={`mgrp ${open === m.label ? 'open' : ''}`}>
             <a onClick={() => setOpen(o => (o === m.label ? null : m.label))}>{m.label}</a>
@@ -153,14 +159,20 @@ export function MemoWidget({ conf }: { conf: WidgetConf }) {
 /* ---------- DIARY (최근 일기 — 실데이터, 4.14) ---------- */
 export function DiaryWidget() {
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
   const [posts] = useLocalList<DiaryPost>('ohome.diary.v1', DIARY_SEED);
   const [moods] = useLocalList<Mood>('ohome.moods.v1', MOOD_SEED);
+  // 메뉴에서 비공개로 둔 다이어리는 위젯에도 안 나온다 (v2.0 사용자 발견 — 위젯으로 새던 것)
+  const [menuSet] = useMenuSettings();
+  const viewer = { loggedIn: !!user, isAdmin };
+  const canSee = canViewHref(menuSet, '/diary', viewer);
   // 비공개 일기는 위젯에 절대 노출되지 않음 — 관리자여도 (4.14)
   const latest = posts
+    .filter(p => canViewHref(menuSet, sectionHref('diary', p.secId ?? MAIN_SEC), viewer))
     .filter(p => p.visibility === 'public' || (p.visibility === 'member' && !!user))
     .sort((a, b) => b.date.localeCompare(a.date))
     .slice(0, 3);
+  if (!canSee) return null;   // 메뉴가 비공개면 위젯 자체를 띄우지 않는다 (v2.0)
   return (
     <div className="panel widget" style={{ margin: 0 }}>
       <h4>DIARY <span className="more" onClick={() => router.push('/diary')}>더보기 ›</span></h4>
@@ -181,23 +193,33 @@ export function DiaryWidget() {
 /* ---------- LATEST (최신 그림 — 로드비 + 갤러리 통합 최신 3장, v1.9 사용자 피드백) ---------- */
 export function LatestWidget() {
   const router = useRouter();
+  const { user, isAdmin } = useAuth();
   const [roads] = useLocalList<RoadItem>('ohome.road.v1', ROAD_SEED);
   const [backups] = useLocalList<BackupPost>('ohome.backup.v1', BACKUP_SEED);
+  /* 메뉴에서 비공개로 둔 곳은 빼고 모은다 (v2.0 사용자 발견) — 로드비와 갤러리를 함께 보여 주는
+     위젯이라 **소스별로** 따진다. 한쪽만 비공개면 나머지는 그대로 나온다. */
+  const [menuSet] = useMenuSettings();
+  const viewer = { loggedIn: !!user, isAdmin };
+  const seeRoad = canViewHref(menuSet, '/loadb', viewer);
+  const seeGal = canViewHref(menuSet, '/gallery', viewer);
   const latest = [
-    ...roads.map(it => ({
+    ...(seeRoad ? roads : []).filter(it => canViewHref(menuSet, sectionHref('roadview', it.secId ?? MAIN_SEC), viewer)).map(it => ({
       id: `r-${it.id}`, date: it.date, ref: it.imgId ?? it.imgUrl, ph: it.ph,
-      href: '/roadview', tip: `로드비 · No.${String(it.no ?? 0).padStart(3, '0')}`,
+      href: '/loadb', tip: `로드비 · No.${String(it.no ?? 0).padStart(3, '0')}`,
     })),
     // 갤러리 — 전체공개 + 접기 없는 게시물의 대표(첫) 이미지
-    ...backups.filter(p => p.visibility === 'public' && !p.fold).map(p => ({
+    ...(seeGal ? backups : [])
+      .filter(p => canViewHref(menuSet, sectionHref('gallery', p.secId ?? MAIN_SEC), viewer))
+      .filter(p => p.visibility === 'public' && !p.fold).map(p => ({
       id: `b-${p.id}`, date: p.date, ref: p.images[0], ph: p.phList[0] ?? 'cool',
-      href: `/backup/${p.id}`, tip: `갤러리 · ${p.title}`,
+      href: `/gallery/${p.id}`, tip: `갤러리 · ${p.title}`,
     })),
   ].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 3);
   const phFallback = ['cool', 'warm', 'red'];
+  if (!seeRoad && !seeGal) return null;   // 둘 다 비공개면 위젯 자체를 띄우지 않는다 (v2.0)
   return (
     <div className="panel widget" style={{ margin: 0 }}>
-      <h4>LATEST <span className="more" onClick={() => router.push('/backup')}>더보기 ›</span></h4>
+      <h4>LATEST <span className="more" onClick={() => router.push('/gallery')}>더보기 ›</span></h4>
       <div className="latest-grid">
         {[0, 1, 2].map(i => {
           const it = latest[i];
@@ -308,11 +330,20 @@ export function TodoWidget({ conf }: { conf: WidgetConf }) {
 export function UpcomingWidget() {
   const router = useRouter();
   const { user, isAdmin } = useAuth();
-  const { st } = useSched();
+  const { st } = useSched();   // 인자 없이 = 모든 스케줄러 (v2.0 — 어느 것이든 다가오는 일정은 다가온다)
+  /* 메뉴에서 비공개로 둔 스케줄러는 위젯에도 안 나온다 (v2.0).
+     스케줄러를 여러 개 만들 수 있으므로 **일정마다 그 스케줄러 기준**으로 따지고,
+     볼 수 있는 스케줄러가 하나도 없을 때만 위젯을 통째로 감춘다. */
+  const [menuSet] = useMenuSettings();
+  const { list } = useSections();
+  const viewer = { loggedIn: !!user, isAdmin };
+  const seeSec = (secId?: string) => canViewHref(menuSet, sectionHref('sched', secId ?? MAIN_SEC), viewer);
+  const canSee = list('sched').some(s => seeSec(s.id));
   const today = new Date();
   const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
   // 오늘 포함 이후 일정 — 매년 반복은 올해 날짜로 환산해 가장 가까운 3개
   const upcoming = st.events
+    .filter(e => seeSec(e.secId))
     .filter(e => isAdmin || e.visibility === 'public' || (e.visibility === 'member' && !!user))
     .map(e => {
       let d = e.start;
@@ -325,6 +356,7 @@ export function UpcomingWidget() {
     .filter(x => x.d >= todayStr)
     .sort((a, b) => a.d.localeCompare(b.d))
     .slice(0, 3);
+  if (!canSee) return null;   // 메뉴가 비공개면 위젯 자체를 띄우지 않는다 (v2.0)
   return (
     <div className="panel widget" style={{ cursor: 'var(--cur-pointer,pointer)' }} onClick={() => router.push('/cal')}>
       <h4>UPCOMING <span className="more">더보기 ›</span></h4>
@@ -483,8 +515,12 @@ export function DecoWidget({ conf }: { conf: WidgetConf }) {
 /* ---------- 스티커 메모 미니보드 (4.6) — 읽기 전용 축소 보드, 클릭 시 /memo ---------- */
 export function MemoBoardWidget() {
   const router = useRouter();
+  const { user, isAdmin } = useAuth();
   const [memos] = useLocalList<StickyMemo>('ohome.memo.v1', MEMO_SEED);
   const [settings] = useMemoSettings();
+  // 메뉴에서 비공개로 둔 메모장은 위젯에도 안 나온다 (v2.0)
+  const [menuSet] = useMenuSettings();
+  if (!canViewHref(menuSet, '/memo', { loggedIn: !!user, isAdmin })) return null;
   return (
     <div className="panel widget" style={{ display: 'flex', flexDirection: 'column' }}>
       <h4>STICKY</h4>
@@ -511,8 +547,10 @@ export function MemoBoardWidget() {
    마감이 없는 신청은 「다가오는 마감」이 아니므로 넣지 않는다. 지난 마감도 뺀다. */
 export function ApplyWidget({ conf }: { conf: WidgetConf }) {
   const router = useRouter();
-  const { isAdmin } = useAuth();
+  const { user, isAdmin } = useAuth();
   const { editOn, updateWidget } = useMainStore();
+  // 메뉴에서 비공개로 둔 신청자 리스트는 위젯에도 안 나온다 (v2.0)
+  const [menuSet] = useMenuSettings();
   const [settings] = useCommSettings();
   const [apps] = useLocalList<Applicant>('ohome.commapply.v1', APPLY_SEED);
   const [open, setOpen] = useState(false);
@@ -532,6 +570,9 @@ export function ApplyWidget({ conf }: { conf: WidgetConf }) {
     const n = Math.round(ms / 86400000);
     return n === 0 ? 'D-DAY' : `D-${n}`;
   };
+
+  // 훅을 모두 부른 뒤에 판정한다 — 중간에서 빠지면 렌더마다 훅 수가 달라진다
+  if (!canViewHref(menuSet, '/comm-apply', { loggedIn: !!user, isAdmin })) return null;
 
   return (
     /* 누르면 관리자든 아니든 신청자 페이지로 간다 (v2.0 사용자 요청).

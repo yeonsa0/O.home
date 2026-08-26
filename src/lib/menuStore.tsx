@@ -13,9 +13,9 @@ export type MenuPerm = 'guest' | 'member' | 'admin';
 export type MenuVis = 'all' | 'member' | 'admin';
 
 /** 트리의 하위 메뉴 한 항목 — label 없으면 기본 이름(FEATURES/게시판명) · pageTitle은 페이지 상단 큰 제목 덮어쓰기 */
-export interface MenuLeaf { href: string; label?: string; pageTitle?: string; vis?: MenuVis }
+export interface MenuLeaf { href: string; label?: string; pageTitle?: string; vis?: MenuVis; open?: boolean }
 /** 트리의 상위 한 항목 — href가 있으면 단독 메뉴(하위 없음) */
-export interface MenuGroupNode { id: string; label: string; href?: string; items: MenuLeaf[]; pageTitle?: string; vis?: MenuVis }
+export interface MenuGroupNode { id: string; label: string; href?: string; items: MenuLeaf[]; pageTitle?: string; vis?: MenuVis; open?: boolean }
 
 export interface MenuSettings {
   tree?: MenuGroupNode[];            // 자유 메뉴 트리 (v1.9 — 없으면 v1 설정에서 마이그레이션)
@@ -38,7 +38,7 @@ export interface MenuSettings {
 export type ImgProtectArea = 'board' | 'comm' | 'tchar' | 'chars' | 'rels';
 
 export const IMG_PROTECT_AREAS: { key: ImgProtectArea; label: string; paths: string[] }[] = [
-  { key: 'board', label: '게시판 (갤러리·로드비 포함)', paths: ['/board', '/backup', '/roadview'] },
+  { key: 'board', label: '게시판 (갤러리·로드비 포함)', paths: ['/board', '/gallery', '/loadb'] },
   { key: 'comm', label: '커미션', paths: ['/comm', '/comm-apply'] },
   { key: 'tchar', label: 'TRPG 캐릭터', paths: ['/tchars'] },
   { key: 'chars', label: '자캐 (캐릭터)', paths: ['/chars'] },
@@ -107,6 +107,53 @@ export const DEFAULT_MENU_SETTINGS: MenuSettings = {
 
 const KEY = 'ohome.menuset.v1';
 
+/** 주소를 바꾼 메뉴 (v2.0 사용자 요청) — 옛 이름이 그대로였던 것들 */
+const MOVED: Record<string, string> = { '/roadview': '/loadb', '/backup': '/gallery' };
+
+/**
+ * 저장된 메뉴의 옛 주소를 새 주소로 (v2.0).
+ *
+ * 메뉴 트리에는 주소가 **문자열로** 적혀 있어서, 주소를 바꾸면 저장해 둔 배치가
+ * 「없는 기능」으로 취급돼 메뉴에서 통째로 사라진다. 읽을 때 한 번 바꿔 준다 —
+ * 저장은 그다음 SAVE 때 자연히 새 주소로 남는다.
+ * 여러 개로 만든 섹션 주소(`/backup?s=fan`)도 앞부분만 갈아 끼운다.
+ */
+function moveHrefs(p: Partial<MenuSettings>): Partial<MenuSettings> {
+  const mv = (h: string) => {
+    for (const [from, to] of Object.entries(MOVED)) {
+      if (h === from) return to;
+      if (h.startsWith(`${from}?`)) return to + h.slice(from.length);
+    }
+    return h;
+  };
+  return {
+    ...p,
+    ...(p.tree ? {
+      tree: p.tree.map(g => ({
+        ...g,
+        ...(g.href ? { href: mv(g.href) } : {}),
+        items: (g.items ?? []).map(it => ({ ...it, href: mv(it.href) })),
+      })),
+    } : {}),
+    ...(p.removedBoards ? { removedBoards: p.removedBoards.map(mv) } : {}),
+  };
+}
+
+/**
+ * 훅 없이 지금 저장된 메뉴 설정 읽기 (v2.0).
+ * 저장 시점에 글 공개범위를 정할 때처럼 **렌더 밖에서** 필요하다 — 그쪽은 훅을 쓸 수 없다.
+ */
+export function currentMenuSettings(): MenuSettings {
+  try {
+    const raw = getRawSetting(KEY);
+    if (raw) {
+      const p = moveHrefs(JSON.parse(raw) as Partial<MenuSettings>);
+      return { ...DEFAULT_MENU_SETTINGS, ...p, tree: p.tree ?? migrateTree(p) };
+    }
+  } catch { /* 기본값 */ }
+  return DEFAULT_MENU_SETTINGS;
+}
+
 export function useMenuSettings(): [MenuSettings, (patch: Partial<MenuSettings>) => void, boolean] {
   const [st, setSt] = useState<MenuSettings>(DEFAULT_MENU_SETTINGS);
   const [loaded, setLoaded] = useState(false);
@@ -114,7 +161,7 @@ export function useMenuSettings(): [MenuSettings, (patch: Partial<MenuSettings>)
     try {
       const raw = getRawSetting(KEY);
       if (raw) {
-        const p = JSON.parse(raw) as Partial<MenuSettings>;
+        const p = moveHrefs(JSON.parse(raw) as Partial<MenuSettings>);
         setSt({
           ...DEFAULT_MENU_SETTINGS,
           ...p,
@@ -127,7 +174,7 @@ export function useMenuSettings(): [MenuSettings, (patch: Partial<MenuSettings>)
     const sync = () => {
       try {
         const raw = getRawSetting(KEY);
-        if (raw) setSt(s => ({ ...s, ...JSON.parse(raw) }));
+        if (raw) setSt(s => ({ ...s, ...moveHrefs(JSON.parse(raw)) }));
       } catch { /* 무시 */ }
     };
     window.addEventListener('ohome-menuset', sync);
@@ -174,6 +221,88 @@ export function menuLabelFor(href: string, extra?: ExtraEntry[]): string | null 
   return e ? e.name : null;
 }
 
+/**
+ * 이 주소가 메뉴에서 어떤 공개범위인지 (v2.0 사용자 발견 — 비공개로 둔 게시판이 위젯으로 샜다).
+ *
+ * 공개범위는 지금까지 **메뉴를 그릴 때만** 쓰였다. 링크가 안 보일 뿐이라, 메인 위젯은
+ * 그 게시판의 글을 그대로 꺼내 보여 줬다 — 로그인하지 않은 방문자에게도. 위젯이 메뉴와
+ * 같은 기준을 보도록 판정을 여기로 모은다.
+ *
+ * · 상세 페이지(`/board/123`)는 목록(`/board`)의 범위를 따른다.
+ * · 경계는 `/`와 `?`로 끊는다 — 안 그러면 `/comm-apply`가 `/comm`에 딸려 들어간다.
+ * · 여러 곳에 걸려 있으면 **더 구체적인 주소**가 이긴다(`/gallery?s=fan` > `/gallery`).
+ *   같은 구체성이면 느슨한 쪽 — 그 링크가 실제로 보이는 경로가 하나라도 있다는 뜻이므로.
+ */
+const VIS_RANK: Record<MenuVis, number> = { all: 0, member: 1, admin: 2 };
+
+/** 이 주소에 걸린 메뉴 항목의 공개범위 + 「주소로는 열람 허용」 여부 (v2.0) */
+function hrefEntry(s: MenuSettings, path: string): { vis: MenuVis; open: boolean } {
+  const covers = (href: string) =>
+    path === href || path.startsWith(`${href}/`) || path.startsWith(`${href}?`);
+  let bestLen = -1;
+  let best: { vis: MenuVis; open: boolean } = { vis: 'all', open: false };
+  const take = (href: string, e: { vis: MenuVis; open: boolean }) => {
+    if (href.length > bestLen) { bestLen = href.length; best = e; }
+    else if (href.length === bestLen && VIS_RANK[e.vis] < VIS_RANK[best.vis]) best = e;
+  };
+  for (const g of s.tree ?? defaultTree()) {
+    const gv = g.vis ?? 'all';
+    if (g.href && covers(g.href)) take(g.href, { vis: gv, open: !!g.open });
+    // 상위가 더 좁으면 하위는 그 뒤에 숨는다 — 상위가 안 보이면 하위도 안 보이므로
+    for (const it of g.items) {
+      if (!covers(it.href)) continue;
+      const iv = it.vis ?? 'all';
+      const narrower = VIS_RANK[gv] >= VIS_RANK[iv];
+      take(it.href, { vis: narrower ? gv : iv, open: narrower ? !!g.open : !!it.open });
+    }
+  }
+  return best;
+}
+
+export function hrefVis(s: MenuSettings, path: string): MenuVis {
+  return hrefEntry(s, path).vis;
+}
+
+/**
+ * **들어갈 수 있는가**의 기준 (v2.0 사용자 요청) — 「숨기되 주소로는 열람 허용」.
+ *
+ * 공개범위는 원래 「메뉴에 보이는가」와 「들어갈 수 있는가」를 한꺼번에 정했다.
+ * 그래서 **링크로만 돌리고 싶은 게시판**을 만들 수가 없었다 — 메뉴에서 감추면 남에게
+ * 주소를 줘도 못 열었기 때문. 항목마다 「주소로는 열람 허용」을 켜면 **메뉴·위젯에서는
+ * 그대로 감추되 들어오는 것만 열어 준다.**
+ */
+export function hrefAccess(s: MenuSettings, path: string): MenuVis {
+  const e = hrefEntry(s, path);
+  return e.open ? 'all' : e.vis;
+}
+
+const allows = (v: MenuVis, viewer: { loggedIn: boolean; isAdmin: boolean }) =>
+  v === 'all' || (v === 'member' && viewer.loggedIn) || (v === 'admin' && viewer.isAdmin);
+
+/** 이 방문자에게 **드러내도 되는가** (v2.0) — 메뉴·위젯이 쓴다.
+ *  「주소로는 열람 허용」이어도 여기서는 감춘다 — 링크로만 돌리려는 것이지 알리려는 게 아니다 */
+export function canViewHref(
+  s: MenuSettings, path: string, viewer: { loggedIn: boolean; isAdmin: boolean },
+): boolean {
+  return allows(hrefVis(s, path), viewer);
+}
+
+/** 이 방문자가 **들어갈 수 있는가** (v2.0) — 페이지 차단·서버 저장값이 쓴다 */
+export function canAccessHref(
+  s: MenuSettings, path: string, viewer: { loggedIn: boolean; isAdmin: boolean },
+): boolean {
+  return allows(hrefAccess(s, path), viewer);
+}
+
+/** 메뉴 트리에 적힌 이 주소의 이름 (v2.0) — 이름을 따로 준 적이 없으면 null */
+export function menuLabelOf(s: MenuSettings, href: string): string | null {
+  for (const g of s.tree ?? []) {
+    if (g.href === href) return g.label?.trim() || null;
+    for (const it of g.items) if (it.href === href) return it.label?.trim() || null;
+  }
+  return null;
+}
+
 /** 설정을 적용한 실제 메뉴 트리 — 자유 트리(v1.9) 기반.
  *  extraBoards: 추가 생성한 게시판(5.2) — 트리에 아직 없으면 /board가 든 그룹에 자동 배치.
  *  viewer: 공개범위 필터(v1.9) — all/member/admin. 없으면 전부 표시(관리 화면용) */
@@ -206,18 +335,10 @@ export function buildMenu(
     })
     .filter((m): m is MenuItem => !!m);
 
-  // 새로 만든 섹션 자동 배치 — 트리에 없고 사용자가 뺀 적도 없으면 원래 메뉴(anchor) 뒤에
-  for (const b of extra ?? []) {
-    const href = b.href;
-    if (placed.has(href) || s.removedBoards.includes(href)) continue;
-    const host = menu.find(m => m.children?.some(c => c.href === b.anchor));
-    if (host?.children) {
-      const at = host.children.findIndex(c => c.href === b.anchor);
-      host.children.splice(at + 1, 0, { href, label: b.name });
-    } else {
-      menu.push({ label: b.name, href });
-    }
-  }
+  /* 새로 만든 섹션·게시판은 **자동으로 배치하지 않는다** (v2.0 사용자 확정).
+     예전에는 원래 메뉴 뒤에 저절로 끼워 넣었는데, 그러면 메뉴 관리의 「미배치」에
+     한 번 보였다가 다음에 들어가면 사라져 있어 어디로 갔는지 알 수 없었다.
+     이제 만들면 미배치에 머물고, 원하는 상위 메뉴에 직접 넣어야 메뉴에 나온다. */
 
   // 하위가 하나도 없는 그룹은 통째로 숨김
   return menu.filter(m => !m.children || m.children.length > 0);

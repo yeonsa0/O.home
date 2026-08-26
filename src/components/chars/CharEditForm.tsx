@@ -55,6 +55,8 @@ export function CharEditForm({ initial, onSave, onCancel, auMode, existingIds }:
     (initial?.specs ?? [{ label: '성별', value: '' }, { label: '키', value: '' }]).map(s => ({ ...s, id: newId() })));
   const [colors, setColors] = useState<ColorRow[]>((initial?.colors ?? []).map(c => ({ ...c, id: newId() })));
   const [colorTipMode, setColorTipMode] = useState<'hex' | 'both' | 'label'>(initial?.colorTipMode ?? 'hex');
+  // 색 점 테두리 (v2.0 사용자 요청) — 없음 / 1px(색 지정). 미지정이면 지금까지의 옅은 테두리
+  const [colorBd, setColorBd] = useState<string | undefined>(initial?.colorBd);
   const [basicHtml, setBasicHtml] = useState(initial?.basicHtml ?? '');
   const [tabs, setTabs] = useState<CharTab[]>(initial?.tabs ?? []);
   const [arts, setArts] = useState<ArtItem[]>(() => {
@@ -94,6 +96,7 @@ export function CharEditForm({ initial, onSave, onCancel, auMode, existingIds }:
       themeMode,
       colors: colors.filter(x => x.hex).map(({ hex, label }) => ({ hex, label })),
       colorTipMode,
+      colorBd,
       specs: specs.filter(s => s.label.trim()).map(({ label, value }) => ({ label: label.trim(), value })),
       tabs,   // 제목이 비어도 유지 — 필터로 사라지던 버그 수정 (v1.9 사용자 지적)
       basicHtml,
@@ -207,6 +210,16 @@ export function CharEditForm({ initial, onSave, onCancel, auMode, existingIds }:
             <button className={colorTipMode === 'both' ? 'on' : ''} onClick={() => setColorTipMode('both')}>이름+hex</button>
             <button className={colorTipMode === 'label' ? 'on' : ''} onClick={() => setColorTipMode('label')}>이름만</button>
           </div>
+          {/* 색 점 테두리 (v2.0 사용자 요청) — 안 정하면 지금까지의 옅은 테두리 그대로 */}
+          <div className="mini-seg" data-tip="색 점 테두리">
+            <button className={colorBd === undefined ? 'on' : ''} onClick={() => setColorBd(undefined)}>기본</button>
+            <button className={colorBd === 'none' ? 'on' : ''} onClick={() => setColorBd('none')}>없음</button>
+            <button className={colorBd !== undefined && colorBd !== 'none' ? 'on' : ''}
+              onClick={() => setColorBd(c => (c && c !== 'none' ? c : '#1d2025'))}>1px</button>
+          </div>
+          {colorBd !== undefined && colorBd !== 'none' && (
+            <ColorField value={colorBd} onChange={setColorBd} />
+          )}
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 10px' }}>
           {colors.map(c => (

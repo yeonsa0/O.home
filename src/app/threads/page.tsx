@@ -1,12 +1,13 @@
 'use client';
 // 감상타래 (4.17) — 본 것·읽은 것의 감상을 트위터식 타래로.
 // 보기 2종(타래/리스트, 기본 보기는 환경설정) · 분류 필터 · 작품명 검색 · 이어쓰기 컴포저
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
+import { useSectionParam, filterSection, sectionSetter, secQuery } from '@/lib/sectionStore';
 import { useLocalList, newId } from '@/lib/postStore';
 import {
-  ThreadWork, ThreadPost, THREAD_SEED, useThreadSettings, catLabel, threadBadgeStyle, lastDate, fmtMD, fmtMDHM,
+  ThreadWork, ThreadPost, THREAD_SEED, useThreadSettings, threadCats, catLabel, threadBadgeStyle, lastDate, fmtMD, fmtMDHM,
 } from '@/lib/threadStore';
 import { useFonts } from '@/lib/fontStore';
 import { putBlob, BlobImg, useBlobUrl } from '@/lib/blobStore';
@@ -54,14 +55,21 @@ function PostImgs({ p, onOpen }: { p: ThreadPost; onOpen: (ids: string[], idx: n
   );
 }
 
-export default function ThreadsPage() {
+function ThreadsPageInner() {
   const router = useRouter();
   const { user, isAdmin } = useAuth();
   const toast = useToast();
   const del = useConfirmDelete();
   const { familyOf } = useFonts();
-  const [works, setWorks, loaded] = useLocalList<ThreadWork>('ohome.threads.v1', THREAD_SEED);
+  const [worksAll, setWorksAll, loaded] = useLocalList<ThreadWork>('ohome.threads.v1', THREAD_SEED);
+  // 여러 개로 만든 섹션 (v2.0) — 주소의 ?s= 가 가리키는 것만 보여 준다
+  const sec = useSectionParam('threads');
+  const works = filterSection(worksAll, sec.id);
+  // 저장은 이 섹션 자리만 교체 — 걸러진 목록을 그대로 넘겨도 다른 섹션이 지워지지 않는다
+  const setWorks = sectionSetter(worksAll, sec.id, setWorksAll);
   const [settings, , setLoaded] = useThreadSettings();
+  // 분류는 섹션마다 따로 (v2.0 사용자 요청) — 정한 적 없으면 기본 섹션 것
+  const cats = threadCats(settings, sec.id);
 
   const [view, setView] = useState<'thread' | 'list'>('thread');
   const [lb, setLb] = useState<{ srcs: string[]; idx: number } | null>(null); // 이미지 확대 보기
@@ -166,7 +174,7 @@ export default function ThreadsPage() {
   return (
     <section className="page">
       <div className="page-head">
-        <PageTitle>THREADS</PageTitle>
+        <PageTitle>{sec.id === 'main' ? 'THREADS' : sec.name}</PageTitle>
         <EditableDesc k="threads-desc" def="본 것, 읽은 것의 감상을 타래로" />
       </div>
 
@@ -174,7 +182,7 @@ export default function ThreadsPage() {
         {/* 분류 필터 (환경설정 관리 리스트) */}
         <div className="seg">
           <button className={cat === 'all' ? 'on' : ''} onClick={() => setCat('all')}>전체</button>
-          {settings.cats.map(c => (
+          {cats.map(c => (
             <button key={c.id} className={cat === c.id ? 'on' : ''} onClick={() => setCat(c.id)}>{c.label}</button>
           ))}
         </div>
@@ -186,7 +194,7 @@ export default function ThreadsPage() {
           <SearchBar onSearch={setQ} />
           {isAdmin && (
             <button className="btn btn-dark" style={{ whiteSpace: 'nowrap' }}
-              onClick={() => router.push('/threads/new')}>＋ NEW THREAD</button>
+              onClick={() => router.push('/threads/new' + secQuery(sec.id))}>＋ NEW THREAD</button>
           )}
         </div>
       </div>
@@ -203,8 +211,8 @@ export default function ThreadsPage() {
               onClick={() => { setSelId(w.id); setView('thread'); }}>
               <div className="th">
                 <CroppedBlobImg fileRef={w.posterId} crop={w.posterCrop} ph={w.ph} />
-                <span className="pill dark" style={threadBadgeStyle(settings.cats.find(c => c.id === w.catId))}>
-                  {catLabel(settings.cats, w.catId)}
+                <span className="pill dark" style={threadBadgeStyle(cats.find(c => c.id === w.catId))}>
+                  {catLabel(cats, w.catId)}
                 </span>
               </div>
               <div className="info">
@@ -222,8 +230,8 @@ export default function ThreadsPage() {
             {sel && (
               <>
                 <div className="thr-head">
-                  <span className="cat-badge" style={threadBadgeStyle(settings.cats.find(c => c.id === sel.catId))}>
-                    {catLabel(settings.cats, sel.catId)}
+                  <span className="cat-badge" style={threadBadgeStyle(cats.find(c => c.id === sel.catId))}>
+                    {catLabel(cats, sel.catId)}
                   </span>
                   <div className="poster">
                     <CroppedBlobImg fileRef={sel.posterId} crop={sel.posterCrop} ph={sel.ph} />
@@ -301,7 +309,7 @@ export default function ThreadsPage() {
                 </div>
                 <div style={{ minWidth: 0 }}>
                   <b>{w.title}</b>
-                  <small>{catLabel(settings.cats, w.catId)} · 글 {w.posts.length} · {fmtMD(lastDate(w))}</small>
+                  <small>{catLabel(cats, w.catId)} · 글 {w.posts.length} · {fmtMD(lastDate(w))}</small>
                 </div>
               </div>
             ))}
@@ -352,4 +360,9 @@ export default function ThreadsPage() {
       {del.element}
     </section>
   );
+}
+
+/** ?s= 를 읽으므로 Suspense 경계가 필요하다 (Next App Router) */
+export default function ThreadsPage() {
+  return <Suspense fallback={<section className="page" />}><ThreadsPageInner /></Suspense>;
 }

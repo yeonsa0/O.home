@@ -66,7 +66,9 @@ function BoardInner() {
 
   const totalPages = Math.max(1, Math.ceil(visible.length / PER_PAGE));
   const pageList = visible.slice((page - 1) * PER_PAGE, page * PER_PAGE);
-  const canRead = (p: Post) => !p.secret || isAdmin || p.authorId === user?.id;
+  /* 비밀글 열람 (v2.0 발견) — authorId 없는 비밀글은 비로그인 방문자에게도 열렸다.
+     둘 다 undefined라 `undefined === undefined`가 참이었기 때문 */
+  const canRead = (p: Post) => !p.secret || isAdmin || (!!p.authorId && p.authorId === user?.id);
 
   if (!boardsLoaded) return <section className="page" />;
 

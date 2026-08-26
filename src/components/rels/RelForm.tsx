@@ -58,6 +58,7 @@ export interface RelFormValue {
   quoteColors?: Record<string, { fg?: string; mark?: string }>; // 히어로 대사 글씨/따옴표색 (페어, v1.9)
   fullFront?: string;                          // 앞에 보일 캐릭터 id
   auName?: string;           // AU별 자관명 (v2.0 사용자 요청 — AU 편집일 때만)
+  qaHide?: boolean;          // 문답 답변 숨기기 (v2.0 사용자 요청)
   pickedCharIds: string[];   // 등록 시 연동할 내 캐릭터 (수정 모드에선 빈 배열)
 }
 
@@ -258,6 +259,8 @@ export function RelForm({ initial, auId, myChars, memberNames, existingIds, onSa
     () => Object.fromEntries(pairMembers.map(m => [m.charId, { fg: mOf(m).quoteColor, mark: mOf(m).quoteMarkColor }])));
   // AU별 자관명 (v2.0 사용자 요청) — 비우면 자관 이름 그대로
   const [auName, setAuName] = useState(auObj?.name ?? '');
+  // 문답 답변 가리기 (v2.0 사용자 요청) — 질문은 그대로 두고 답변 내용만
+  const [qaHide, setQaHide] = useState(!!initial?.qaHide);
   const [fullFront, setFullFront] = useState<string | undefined>(initial?.fullFront);
 
   // 내 캐릭터 연동 목록 — 선택된 캐릭터는 항상 표시, 나머지는 검색 필터 후 총 6명까지
@@ -328,6 +331,7 @@ export function RelForm({ initial, auId, myChars, memberNames, existingIds, onSa
       themeTone: themeMode === 'custom' ? themeTone : undefined,
       cp,
       auName: auObj ? auName.trim() : undefined,
+      qaHide: qaHide || undefined,
       fulls: pairMembers.length
         ? Object.fromEntries(await Promise.all(pairMembers.map(async m => {
           const d = fulls[m.charId];
@@ -750,6 +754,26 @@ export function RelForm({ initial, auId, myChars, memberNames, existingIds, onSa
                   : '이 페이지도 홈페이지 테마를 그대로 사용합니다'}
               </p>
             </div>
+            {/* 문답 답변 가리기 (v2.0 사용자 요청) — 방문자에게 답변 내용을 안 보이게.
+                자관 전체 설정이라 AU 편집에서는 두지 않는다 */}
+            {!auObj && (
+              <div>
+                <KCheck label="문답 답변 숨기기" checked={qaHide} onChange={setQaHide} />
+                <p className="hint" style={{ margin: '5px 0 0', lineHeight: 1.6 }}>
+                  질문은 그대로 두고 <b>답변 내용만</b> 가립니다 — 관리자와 이 자관 캐릭터에
+                  권한을 받은 회원만 볼 수 있습니다.
+                  {qaHide && (
+                    <>
+                      <br />
+                      <b style={{ color: 'var(--accent)' }}>다만 화면에서 가리는 것이라 완전한 차단은 아닙니다.</b>{' '}
+                      답변은 공개로 저장돼 있어 마음먹고 찾아보는 사람에게는 보일 수 있으니,
+                      정말 알려지면 안 되는 내용은 적지 말아 주세요.
+                    </>
+                  )}
+                </p>
+              </div>
+            )}
+
             {/* 페이지 배경 (v2.0 사용자 요청) — 이 페이지에 있는 동안의 바탕 그라데이션. AU마다 따로 */}
             {(
               <div>

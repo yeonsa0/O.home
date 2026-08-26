@@ -1,9 +1,9 @@
 'use client';
 // 방명록 (4.7) — 게스트 작성(닉네임+비밀번호) · 비밀글 · 관리자 답글
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useAuth } from '@/lib/auth';
 import { useLocalList, GUEST_SEED, GuestEntry, newId, fmtDate } from '@/lib/postStore';
-import { KInput, KTextarea, KCheck, SearchBar } from '@/components/ui/Kit';
+import { KInput, KTextarea, KCheck, SearchBar, Pager } from '@/components/ui/Kit';
 import { GuestIdBar } from '@/components/ui/GuestId';
 import { Modal } from '@/components/ui/Modal';
 import { EditableDesc, PageTitle } from '@/components/ui/PageText';
@@ -71,6 +71,15 @@ export default function GuestbookPage() {
     ? entries.filter(e => canRead(e) && (e.body.includes(q) || e.author.includes(q)))
     : entries;
 
+  // 방명록이 쌓이면 페이지로 (v2.0 사용자 요청) — 한 페이지 15개.
+  // 답글이 달리면 한 칸이 길어지므로 도토리(12개)보다 조금만 늘렸다.
+  const PER_GB = 15;
+  const [page, setPage] = useState(1);
+  const pages = Math.max(1, Math.ceil(visible.length / PER_GB));
+  const cur = Math.min(page, pages);      // 검색·삭제로 줄어 페이지가 사라지면 마지막으로 당긴다
+  const start = (cur - 1) * PER_GB;
+  useEffect(() => { setPage(1); }, [q]);  // 검색어가 바뀌면 첫 장부터
+
   return (
     <section className="page">
       <div className="page-head"><PageTitle>GUESTBOOK</PageTitle><EditableDesc k="guest-desc" def="게스트 작성 허용 옵션 · 비밀글 · 관리자 답글" /></div>
@@ -96,7 +105,7 @@ export default function GuestbookPage() {
 
       {/* 목록 */}
       <div className="panel flush">
-        {visible.map(e => (
+        {visible.slice(start, start + PER_GB).map(e => (
           <div className="gb-item" key={e.id}>
             <div className="hd">
               {canRead(e)
@@ -127,6 +136,7 @@ export default function GuestbookPage() {
           <div style={{ padding: 36, textAlign: 'center', fontSize: 12.5, color: 'var(--faint)' }}>아직 방명록이 없습니다</div>
         )}
       </div>
+      {visible.length > PER_GB && <Pager page={cur} total={pages} onChange={setPage} />}
 
       {/* 관리자 답글 모달 */}
       <Modal open={replyFor !== null} onClose={() => setReplyFor(null)} small title="관리자 답글"
