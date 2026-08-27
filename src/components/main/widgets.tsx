@@ -107,7 +107,7 @@ export function MenuListWidget() {
   const [menuSet, , menuLoaded] = useMenuSettings(); // 메뉴 관리 (5.2) 반영
   const { boards, loaded: boardsLoaded } = useBoards(); // 다중 게시판 (5.2)
   const { user: wUser, isAdmin: wIsAdmin } = useAuth(); // 공개범위 필터 (v1.9)
-  const { map: wSecMap } = useSections();      // 여러 개로 만든 섹션 (v2.0 — 빠져 있었다)
+  const { map: wSecMap } = useSections();     // 여러 개로 만든 섹션 (v2.0 — 빠져 있었다)
   const { links: wLinks } = useCustomLinks();  // 커스텀 링크 (v2.0)
   return (
     <div className="panel menu-list wgt-menu">
@@ -478,6 +478,7 @@ export function DecoWidget({ conf }: { conf: WidgetConf }) {
   };
   return (
     <div className="deco-wgt"
+      data-tip={cur?.tooltip}
       style={{
         position: 'relative', width: '100%', height: '100%', minHeight: 80, overflow: 'hidden',
         aspectRatio: conf.h == null ? '1/1' : undefined, // 크기 동결 전 기본 정사각
@@ -576,7 +577,7 @@ export function ApplyWidget({ conf }: { conf: WidgetConf }) {
 
   return (
     /* 누르면 관리자든 아니든 신청자 페이지로 간다 (v2.0 사용자 요청).
-       설정은 편집모드에서 우클릭 > 설정으로만 — 목록을 보러 눌렀는데 관리 창이 뜨면 안 된다 */
+        설정은 편집모드에서 우클릭 > 설정으로만 — 목록을 보러 눌렀는데 관리 창이 뜨면 안 된다 */
     <div className="panel widget" style={{ cursor: 'var(--cur-pointer,pointer)' }}
       onClick={e => {
         if ((e.target as HTMLElement).closest('.modal-ov')) return;
