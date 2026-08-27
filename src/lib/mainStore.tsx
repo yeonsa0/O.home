@@ -92,7 +92,7 @@ const DEFAULT_STATE: MainState = {
 };
 
 const STORAGE_KEY = 'ohome.main.v1';
-/** 편집모드를 지원하는 페이지 (v1.9 — 카드 그리드 드래グ 정렬 포함)
+/** 편집모드를 지원하는 페이지 (v1.9 — 카드 그리드 드래그 정렬 포함)
  *  /trpg 로그 백업이 빠져 있던 것은 실수 — 드래그 정렬·목록 숨김 확인 모두 이 토글이 있어야 켜진다
  *  (v2.0 사용자 발견 — 목록 숨김 기능을 만들다 보니 편집모드 자체가 이 페이지에서 켜지지 않는 걸 발견) */
 const EDIT_PAGES = ['/', '/comm-apply', '/chars', '/rels', '/comm', '/gallery', '/dotori', '/tchars', '/playlog', '/trpg'];
@@ -319,6 +319,7 @@ export interface DecoSlide {
   imgId: string;
   crop?: import('@/components/ui/CropEditor').CropValue;
   link?: string;
+  tooltip?: string;   // 마우스 오버 시 표시할 문구 (v2.1)
 }
 
 /**
@@ -336,5 +337,6 @@ export function decoSlides(settings: Record<string, unknown>): DecoSlide[] {
     imgId,
     crop: settings.crop as DecoSlide['crop'],
     link: settings.link as string | undefined,
+    tooltip: settings.tooltip as string | undefined,
   }];
 }
