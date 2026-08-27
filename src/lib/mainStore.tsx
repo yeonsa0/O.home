@@ -1,6 +1,9 @@
 'use client';
+
 // 메인 위젯 시스템 + 편집모드 상태 (기획서 4.0)
+
 // 저장소: localStorage → 추후 Supabase site_settings 로 이전
+
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { ConfirmModal } from '@/components/ui/Modal';
@@ -8,7 +11,7 @@ import { useAuth } from './auth';
 import { getRawSetting, setSetting } from './settingStore';
 
 export type WidgetType =
-  | 'banner' | 'member'                        // 고정 요소 (삭제 불가)
+  | 'banner' | 'member'                       // 고정 요소 (삭제 불가)
   | 'menu' | 'memo' | 'diary' | 'latest'
   | 'dday' | 'todo' | 'upcoming' | 'freetext' | 'deco' | 'memoboard'
   | 'apply';   // 'image'는 deco(장식 이미지+링크)로 일원화 (v1.9) · apply = 커미션 신청자 (v2.0)
@@ -18,7 +21,7 @@ export interface WidgetConf {
   type: WidgetType;
   col: 1 | 2 | 3;                        // PC 배치 열
   enabled: boolean;
-  fixed?: boolean;                       // 고정 요소 여부
+  fixed?: boolean;                      // 고정 요소 여부
   // 편집모드 배치값 (그리드 원점 = 첫 위치, v1.8)
   tx: number; ty: number;
   w?: number; h?: number; z?: number;
@@ -36,8 +39,8 @@ export type LayoutMode = 'fixed' | 'fluid'; // 고정 캔버스(기본) / 반응
 interface MainState {
   layoutMode: LayoutMode;
   widgets: WidgetConf[];
-  mobileOrder: string[];                 // 모바일 세로 나열 순서 (위젯 id)
-  removedIds?: string[];                 // 삭제한 기본 위젯 id — 로드 시 기본값 병합에서 되살아나지 않게 (v1.9)
+  mobileOrder: string[];                // 모바일 세로 나열 순서 (위젯 id)
+  removedIds?: string[];                // 삭제한 기본 위젯 id — 로드 시 기본값 병합에서 되살아나지 않게 (v1.9)
 }
 
 export const WIDGET_META: Record<WidgetType, { title: string; desc: string }> = {
@@ -89,7 +92,7 @@ const DEFAULT_STATE: MainState = {
 };
 
 const STORAGE_KEY = 'ohome.main.v1';
-/** 편집모드를 지원하는 페이지 (v1.9 — 카드 그리드 드래그 정렬 포함)
+/** 편집모드를 지원하는 페이지 (v1.9 — 카드 그리드 드래グ 정렬 포함)
  *  /trpg 로그 백업이 빠져 있던 것은 실수 — 드래그 정렬·목록 숨김 확인 모두 이 토글이 있어야 켜진다
  *  (v2.0 사용자 발견 — 목록 숨김 기능을 만들다 보니 편집모드 자체가 이 페이지에서 켜지지 않는 걸 발견) */
 const EDIT_PAGES = ['/', '/comm-apply', '/chars', '/rels', '/comm', '/gallery', '/dotori', '/tchars', '/playlog', '/trpg'];
@@ -316,7 +319,6 @@ export interface DecoSlide {
   imgId: string;
   crop?: import('@/components/ui/CropEditor').CropValue;
   link?: string;
-  tooltip?: string; // 👈 마우스 오버 툴팁 필드 추가 완료
 }
 
 /**
@@ -334,6 +336,5 @@ export function decoSlides(settings: Record<string, unknown>): DecoSlide[] {
     imgId,
     crop: settings.crop as DecoSlide['crop'],
     link: settings.link as string | undefined,
-    tooltip: settings.tooltip as string | undefined,
   }];
 }
