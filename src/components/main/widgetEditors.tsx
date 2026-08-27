@@ -237,7 +237,7 @@ export function DecoEditor({ conf, onClose }: { conf: WidgetConf; onClose: () =>
                     const n = list.map(s => s.id === sl.id ? { ...s, link: e.target.value || undefined } : s);
                     setList(n); saveAll(n);
                   }} />
-                {/* 👇 여기에 마우스 오버 문구(툴팁) 입력 칸 추가 완료! */}
+                {/* 👇 마우스 오버 문구(툴팁) 입력 칸 */}
                 <KInput placeholder="마우스 오버 문구 (선택 — 툴팁)" value={sl.tooltip ?? ''}
                   onChange={e => {
                     const n = list.map(s => s.id === sl.id ? { ...s, tooltip: e.target.value || undefined } : s);
