@@ -218,14 +218,19 @@ export function DecoEditor({ conf, onClose }: { conf: WidgetConf; onClose?: () =
         onClick={() => { setSwapFor(sl.id); document.getElementById(inputId)?.click(); }}>
         <CroppedBlobImg fileRef={sl.imgId} crop={fit === 'contain' ? undefined : sl.crop} ph="" />
       </div>
-      <div style={{ display: 'flex', gap: 6, alignItems: 'center', flex: 1, minWidth: 0 }}>
-        {/* 풀주소를 붙여넣어도 사이트 오리진을 떼고 상대경로로 (v1.9) */}
-        <KInput placeholder="링크 (선택 — 클릭 시 이동)" value={sl.link ?? ''}
-          onChange={e => patchSlide(sl.id, { link: normalizeInternalLink(e.target.value) || undefined })} />
-        {fit === 'cover' && (
-          <button className="btn btn-ghost" style={{ height: 24, padding: '0 9px', fontSize: 10, whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center' }}
-            onClick={() => setCropFor(sl.id)}>✂ 위치</button>
-        )}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: 1, minWidth: 0 }}>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          {/* 풀주소를 붙여넣어도 사이트 오리진을 떼고 상대경로로 (v1.9) */}
+          <KInput placeholder="링크 (선택 — 클릭 시 이동)" value={sl.link ?? ''}
+            onChange={e => patchSlide(sl.id, { link: normalizeInternalLink(e.target.value) || undefined })} />
+          {fit === 'cover' && (
+            <button className="btn btn-ghost" style={{ height: 24, padding: '0 9px', fontSize: 10, whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center' }}
+              onClick={() => setCropFor(sl.id)}>✂ 위치</button>
+          )}
+        </div>
+        {/* 마우스 오버 시 표시되는 출처/설명 문구 */}
+        <KInput placeholder="마우스 오버 문구 (선택)" value={sl.tooltip ?? ''}
+          onChange={e => patchSlide(sl.id, { tooltip: e.target.value || undefined })} />
       </div>
       <button className="btn btn-ghost" style={{ height: 24, padding: '0 11px', fontSize: 10.5, display: 'inline-flex', alignItems: 'center' }}
         onClick={() => del.ask(`${i + 1}번째 이미지를 위젯에서 빼시겠습니까?`,
