@@ -173,10 +173,27 @@ export async function createSupabaseBackend(
     },
 
     subscribe(coll, onChange) {
-      const ch = sb.channel(`ohome:${coll}`)
-        .on('postgres_changes', { event: '*', schema: 'public', table: coll }, () => onChange())
-        .subscribe();
-      return () => { void sb.removeChannel(ch); };
+      const ch = sb.channel(`ohome:${coll}`);
+      try {
+        ch.on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: coll },
+          () => {
+            onChange();
+          }
+        );
+        ch.subscribe();
+      } catch (err) {
+        console.warn(`[ohome] 실시간 구독 설정 중 예외 발생 (${coll}):`, err);
+      }
+
+      return () => {
+        try {
+          void sb.removeChannel(ch);
+        } catch {
+          /* 무시 */
+        }
+      };
     },
 
     async fetchSetting<T>(key: string) {
