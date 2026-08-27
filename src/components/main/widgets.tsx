@@ -372,8 +372,8 @@ export function UpcomingWidget() {
 }
 
 /* ---------- 자유 텍스트 (v1.9 개편 — 사용자 확정) ----------
-   패널 없이 문구만 — 폰트·크기·색·정렬을 지정해 장식처럼 아무 곳에나 배치(위젯 드래그·크기 공통).
-   편집은 편집모드에서만 — 우클릭 「설정」 (v1.9 사용자 확정: 평상시 클릭 편집 제거). */
+    패널 없이 문구만 — 폰트·크기·색·정렬을 지정해 장식처럼 아무 곳에나 배치(위젯 드래그·크기 공통).
+    편집은 편집모드에서만 — 우클릭 「설정」 (v1.9 사용자 확정: 평상시 클릭 편집 제거). */
 export function FreeTextWidget({ conf }: { conf: WidgetConf }) {
   const { isAdmin } = useAuth();
   const { updateWidget } = useMainStore();
@@ -478,7 +478,7 @@ export function DecoWidget({ conf }: { conf: WidgetConf }) {
   };
   return (
     <div className="deco-wgt"
-      data-tip={cur?.tooltip}
+      title={cur?.tooltip || undefined}
       style={{
         position: 'relative', width: '100%', height: '100%', minHeight: 80, overflow: 'hidden',
         aspectRatio: conf.h == null ? '1/1' : undefined, // 크기 동결 전 기본 정사각
@@ -543,9 +543,9 @@ export function MemoBoardWidget() {
 }
 
 /* ---------- 커미션 신청자 (v2.0 사용자 요청) ----------
-   다가오는 마감이 빠른 순으로. 몇 명까지 볼지는 설정에서 (기본 5명).
-   이름은 신청자 리스트와 **같은 규칙**으로 가린다 — 관리자만 전체, 나머지는 앞 몇 글자만.
-   마감이 없는 신청은 「다가오는 마감」이 아니므로 넣지 않는다. 지난 마감도 뺀다. */
+    다가오는 마감이 빠른 순으로. 몇 명까지 볼지는 설정에서 (기본 5명).
+    이름은 신청자 리스트와 **같은 규칙**으로 가린다 — 관리자만 전체, 나머지는 앞 몇 글자만.
+    마감이 없는 신청은 「다가오는 마감」이 아니므로 넣지 않는다. 지난 마감도 뺀다. */
 export function ApplyWidget({ conf }: { conf: WidgetConf }) {
   const router = useRouter();
   const { user, isAdmin } = useAuth();
