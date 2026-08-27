@@ -583,7 +583,7 @@ export function ApplyWidget({ conf }: { conf: WidgetConf }) {
     <div className="panel widget" style={{ cursor: 'var(--cur-pointer,pointer)' }}
       onClick={e => {
         if ((e.target as HTMLElement).closest('.modal-ov')) return;
-        if (editOn) return;   -- 편집모드에서는 배치·우클릭 메뉴가 우선
+        if (editOn) return;   // 편집모드에서는 배치·우클릭 메뉴가 우선
         router.push('/comm-apply');
       }}>
       <h4>COMMISSION <span className="more" onClick={e => { e.stopPropagation(); router.push('/comm-apply'); }}>전체 ›</span></h4>
