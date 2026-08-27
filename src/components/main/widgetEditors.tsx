@@ -11,9 +11,9 @@ import { useFonts } from '@/lib/fontStore';
 /* ---------- 배너 관리 에디터 ---------- */
 export interface BannerSlide {
   id: string;
-  imgId?: string;       // Blob 이미지 ID (우선)
-  img?: string;         // 레거시 외부 URL
-  crop?: CropValue;     // 크롭 영역
+  imgId?: string;      // Blob 이미지 ID (우선)
+  img?: string;          // 레거시 외부 URL
+  crop?: CropValue;      // 크롭 영역
   cap: string;
   sub: string;
   link?: string;
@@ -237,7 +237,6 @@ export function DecoEditor({ conf, onClose }: { conf: WidgetConf; onClose: () =>
                     const n = list.map(s => s.id === sl.id ? { ...s, link: e.target.value || undefined } : s);
                     setList(n); saveAll(n);
                   }} />
-                {/* 👇 마우스 오버 문구(툴팁) 입력 칸 */}
                 <KInput placeholder="마우스 오버 문구 (선택 — 툴팁)" value={sl.tooltip ?? ''}
                   onChange={e => {
                     const n = list.map(s => s.id === sl.id ? { ...s, tooltip: e.target.value || undefined } : s);
