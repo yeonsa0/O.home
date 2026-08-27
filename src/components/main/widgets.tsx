@@ -42,7 +42,7 @@ export function BannerWidget({ conf }: { conf: WidgetConf }) {
   const router = useRouter();
   const [cur, setCur] = useState(0);
   const [mngOpen, setMngOpen] = useState(false);
-  useEditEvent(conf.id, () => setMngOpen(true));   // 편집모드 우클릭 → 설정 (v1.9)
+  useEditEvent(conf.id, () => setMngOpen(true));    // 편집모드 우클릭 → 설정 (v1.9)
   const slides = ((conf.settings.slides as BannerSlide[]) ?? []).length > 0
     ? (conf.settings.slides as BannerSlide[]) : DEMO_SLIDES;
   const interval = (conf.settings.interval as number) ?? 4;
@@ -107,7 +107,7 @@ export function MenuListWidget() {
   const [menuSet, , menuLoaded] = useMenuSettings(); // 메뉴 관리 (5.2) 반영
   const { boards, loaded: boardsLoaded } = useBoards(); // 다중 게시판 (5.2)
   const { user: wUser, isAdmin: wIsAdmin } = useAuth(); // 공개범위 필터 (v1.9)
-  const { map: wSecMap } = useSections();     // 여러 개로 만든 섹션 (v2.0 — 빠져 있었다)
+  const { map: wSecMap } = useSections();    // 여러 개로 만든 섹션 (v2.0 — 빠져 있었다)
   const { links: wLinks } = useCustomLinks();  // 커스텀 링크 (v2.0)
   return (
     <div className="panel menu-list wgt-menu">
@@ -136,7 +136,7 @@ export function MemoWidget({ conf }: { conf: WidgetConf }) {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState('');
   const text = (conf.settings.text as string) ?? '';
-  useEditEvent(conf.id, () => { setDraft(text); setOpen(true); });   // 편집모드 우클릭 → 설정 (v1.9)
+  useEditEvent(conf.id, () => { setDraft(text); setOpen(true); });    // 편집모드 우클릭 → 설정 (v1.9)
   return (
     <div className="panel widget" style={{ cursor: isAdmin ? 'pointer' : undefined }}
       onClick={e => { if ((e.target as HTMLElement).closest('.modal-ov')) return; if (isAdmin && !editOn) { setDraft(text); setOpen(true); } }}>
@@ -211,9 +211,9 @@ export function LatestWidget() {
     ...(seeGal ? backups : [])
       .filter(p => canViewHref(menuSet, sectionHref('gallery', p.secId ?? MAIN_SEC), viewer))
       .filter(p => p.visibility === 'public' && !p.fold).map(p => ({
-      id: `b-${p.id}`, date: p.date, ref: p.images[0], ph: p.phList[0] ?? 'cool',
-      href: `/gallery/${p.id}`, tip: `갤러리 · ${p.title}`,
-    })),
+        id: `b-${p.id}`, date: p.date, ref: p.images[0], ph: p.phList[0] ?? 'cool',
+        href: `/gallery/${p.id}`, tip: `갤러리 · ${p.title}`,
+      })),
   ].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 3);
   const phFallback = ['cool', 'warm', 'red'];
   if (!seeRoad && !seeGal) return null;   // 둘 다 비공개면 위젯 자체를 띄우지 않는다 (v2.0)
@@ -259,7 +259,7 @@ export function DdayWidget({ conf }: { conf: WidgetConf }) {
   // 'serif'는 폰트 라이브러리의 실제(잠금) 폰트라 편집기의 기본 옵션과 값이 늘 일치한다
   const dFontId = (conf.settings.fontId as string | undefined) ?? 'serif';
   const dColor = conf.settings.color as string | undefined;
-  useEditEvent(conf.id, () => setOpen(true));   // 편집모드 우클릭 → 설정 (v1.9)
+  useEditEvent(conf.id, () => setOpen(true));    // 편집모드 우클릭 → 설정 (v1.9)
   return (
     <div className="panel widget" style={{ cursor: isAdmin ? 'pointer' : undefined }}
       onClick={e => { if ((e.target as HTMLElement).closest('.modal-ov')) return; if (isAdmin && !editOn) setOpen(true); }}>
@@ -291,7 +291,7 @@ export function TodoWidget({ conf }: { conf: WidgetConf }) {
   const { editOn, updateWidget } = useMainStore();
   const [open, setOpen] = useState(false);
   const items = (conf.settings.items as TodoSetItem[]) ?? [];
-  useEditEvent(conf.id, () => setOpen(true));   // 편집모드 우클릭 → 설정 (v1.9)
+  useEditEvent(conf.id, () => setOpen(true));    // 편집모드 우클릭 → 설정 (v1.9)
 
   const setItems = (next: TodoSetItem[]) => {
     updateWidget(conf.id, { settings: { ...conf.settings, items: next } }, { persist: true });
@@ -432,13 +432,13 @@ export function FreeTextWidget({ conf }: { conf: WidgetConf }) {
 /* ---------- 장식 이미지 — 패널 없이 이미지만 (장식용) ---------- */
 /** 비율 유지(안 잘림) 렌더 — cover(크롭)와 선택제 (v1.9 사용자 요청)
  *  둥근 모서리는 위젯 박스가 아니라 **이미지 크기**에 맞춰 적용 (v1.9 사용자 피드백 — 여백까지 둥글면 티가 안 남) */
-function ContainImg({ fileRef, rounded }: { fileRef: string; rounded: boolean }) {
+function ContainImg({ fileRef, rounded, tooltip }: { fileRef: string; rounded: boolean; tooltip?: string }) {
   const url = useBlobUrl(fileRef);
   if (!url) return null;
   return (
     <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={url} alt="" draggable={false}
+      <img src={url} alt="" draggable={false} title={tooltip}
         style={{
           maxWidth: '100%', maxHeight: '100%', width: 'auto', height: 'auto', display: 'block',
           borderRadius: rounded ? 'var(--radius)' : 0,
@@ -488,8 +488,10 @@ export function DecoWidget({ conf }: { conf: WidgetConf }) {
       onClick={onBody}>
       {cur
         ? (fit === 'contain'
-          ? <ContainImg key={cur.id} fileRef={cur.imgId} rounded={rounded} />
-          : <CroppedBlobImg key={cur.id} fileRef={cur.imgId} crop={cur.crop} ph="" />)
+          ? <ContainImg key={cur.id} fileRef={cur.imgId} rounded={rounded} tooltip={cur?.tooltip} />
+          : <div style={{ position: 'absolute', inset: 0 }} title={cur?.tooltip}>
+              <CroppedBlobImg key={cur.id} fileRef={cur.imgId} crop={cur.crop} ph="" />
+            </div>)
         : (
           <div className="ph" style={{ position: 'absolute', inset: 0 }}>
             <span style={{ fontSize: 10 }}>{isAdmin ? 'DECO — 편집모드에서 우클릭 → 설정' : 'DECO'}</span>
