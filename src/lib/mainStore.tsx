@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 // 메인 위젯 시스템 + 편집모드 상태 (기획서 4.0)
 // 저장소: localStorage → 추후 Supabase site_settings 로 이전
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
@@ -8,7 +8,7 @@ import { useAuth } from './auth';
 import { getRawSetting, setSetting } from './settingStore';
 
 export type WidgetType =
-  | 'banner' | 'member'                 // 고정 요소 (삭제 불가)
+  | 'banner' | 'member'                        // 고정 요소 (삭제 불가)
   | 'menu' | 'memo' | 'diary' | 'latest'
   | 'dday' | 'todo' | 'upcoming' | 'freetext' | 'deco' | 'memoboard'
   | 'apply';   // 'image'는 deco(장식 이미지+링크)로 일원화 (v1.9) · apply = 커미션 신청자 (v2.0)
@@ -16,9 +16,9 @@ export type WidgetType =
 export interface WidgetConf {
   id: string;
   type: WidgetType;
-  col: 1 | 2 | 3;                       // PC 배치 열
+  col: 1 | 2 | 3;                        // PC 배치 열
   enabled: boolean;
-  fixed?: boolean;                      // 고정 요소 여부
+  fixed?: boolean;                       // 고정 요소 여부
   // 편집모드 배치값 (그리드 원점 = 첫 위치, v1.8)
   tx: number; ty: number;
   w?: number; h?: number; z?: number;
@@ -36,8 +36,8 @@ export type LayoutMode = 'fixed' | 'fluid'; // 고정 캔버스(기본) / 반응
 interface MainState {
   layoutMode: LayoutMode;
   widgets: WidgetConf[];
-  mobileOrder: string[];                // 모바일 세로 나열 순서 (위젯 id)
-  removedIds?: string[];                // 삭제한 기본 위젯 id — 로드 시 기본값 병합에서 되살아나지 않게 (v1.9)
+  mobileOrder: string[];                 // 모바일 세로 나열 순서 (위젯 id)
+  removedIds?: string[];                 // 삭제한 기본 위젯 id — 로드 시 기본값 병합에서 되살아나지 않게 (v1.9)
 }
 
 export const WIDGET_META: Record<WidgetType, { title: string; desc: string }> = {
@@ -316,6 +316,7 @@ export interface DecoSlide {
   imgId: string;
   crop?: import('@/components/ui/CropEditor').CropValue;
   link?: string;
+  tooltip?: string; // 👈 마우스 오버 툴팁 필드 추가 완료
 }
 
 /**
@@ -333,5 +334,6 @@ export function decoSlides(settings: Record<string, unknown>): DecoSlide[] {
     imgId,
     crop: settings.crop as DecoSlide['crop'],
     link: settings.link as string | undefined,
+    tooltip: settings.tooltip as string | undefined,
   }];
 }
