@@ -1,5 +1,5 @@
 'use client';
-// 위젯별 설정 에디터 모음 (4.0) — 배너 / D-day / 투두 / 장식 이미지 등
+// 위젯별 설정 에디터 모음 (4.0) — 배너 / D-day / 투두 / 장식 이미지 / 자유 텍스트 등
 import React, { useState } from 'react';
 import { WidgetConf, useMainStore, decoSlides, DecoSlide } from '@/lib/mainStore';
 import { KInput, KTextarea, KSelect, KStep, KCheck } from '@/components/ui/Kit';
@@ -269,6 +269,50 @@ export function DecoEditor({ conf, onClose }: { conf: WidgetConf; onClose: () =>
           setList(n); saveAll(n);
         }}>+ 이미지 추가</button>
         <button className="btn btn-dark" onClick={onClose}>확인</button>
+      </div>
+    </div>
+  );
+}
+
+/* ---------- 자유 텍스트 위젯 설정 에디터 (v1.9) ---------- */
+export function TextSettingEditor({ conf, onClose }: { conf: WidgetConf; onClose: () => void }) {
+  const { updateWidget } = useMainStore();
+  const { fonts, familyOf } = useFonts();
+  const s = conf.settings as { text?: string; fontId?: string; size?: number; color?: string; align?: 'left' | 'center' | 'right'; bold?: boolean };
+  const [draft, setDraft] = useState(s);
+
+  const save = () => {
+    updateWidget(conf.id, { settings: { ...conf.settings, ...draft } }, { persist: true });
+    onClose();
+  };
+
+  return (
+    <div style={{ display: 'grid', gap: 12 }}>
+      <KTextarea value={draft.text ?? ''} onChange={e => setDraft(d => ({ ...d, text: e.target.value }))} placeholder="출력할 텍스트를 입력하세요" />
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+        <KSelect minWidth={170} value={draft.fontId ?? 'default'}
+          onChange={v => setDraft(d => ({ ...d, fontId: v }))}
+          options={fonts.map(f => ({ value: f.id, label: <span style={{ fontFamily: familyOf(f.id) }}>{f.name}</span> }))} />
+        <span className="cp-lb">크기</span>
+        <KStep value={draft.size ?? 15} min={10} max={64} step={1} suffix="px"
+          onChange={v => setDraft(d => ({ ...d, size: v }))} />
+      </div>
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+        <span className="cp-lb">글씨색</span>
+        <ColorField value={draft.color ?? '#5d636d'} onChange={hex => setDraft(d => ({ ...d, color: hex }))} />
+        <div className="mini-seg">
+          {(['left', 'center', 'right'] as const).map(a => (
+            <button key={a} className={(draft.align ?? 'left') === a ? 'on' : ''}
+              onClick={() => setDraft(d => ({ ...d, align: a }))}>
+              {a === 'left' ? '왼쪽' : a === 'center' ? '가운데' : '오른쪽'}
+            </button>
+          ))}
+        </div>
+        <KCheck label="굵게" checked={!!draft.bold} onChange={v => setDraft(d => ({ ...d, bold: v }))} />
+      </div>
+      <div className="modal-actions" style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 8 }}>
+        <button className="btn btn-ghost" onClick={onClose}>CANCEL</button>
+        <button className="btn btn-dark" onClick={save}>SAVE</button>
       </div>
     </div>
   );
