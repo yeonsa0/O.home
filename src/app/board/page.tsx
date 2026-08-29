@@ -45,8 +45,8 @@ function BoardInner() {
   const [prevBid, setPrevBid] = useState(bid);
   if (prevBid !== bid) { setPrevBid(bid); setCat('전체'); setQ(''); setPage(1); }
 
-  // 권한 3단계 — mock 단계에선 로그인 전제 (로드뷰 4.10과 동일 규칙)
-  const allow = (p: BoardPerm) => (p === 'admin' ? isAdmin : p === 'member' ? !!user : true);
+  // 권한 3단계 — 그림판(paint) 스킨은 비로그인도 작성 허용
+  const allow = (p: BoardPerm) => (board.skin === 'paint' ? true : (p === 'admin' ? isAdmin : p === 'member' ? !!user : true));
 
   const visible = useMemo(() => {
     let list = posts.filter(p => (p.boardId ?? MAIN_BOARD_ID) === board.id);
