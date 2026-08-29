@@ -17,7 +17,7 @@ import { newId } from '@/lib/postStore';
 import { useCommSettings, badgeStyle, CommBadge, CommSettings } from '@/lib/commStore';
 import {
   useBoardSettings, boardBadgeStyle, BoardBadge, galleryCatsOf,
-  useBoards, Board, BoardSkin, BoardPerm, DEFAULT_BOARD_CATS, MAIN_BOARD_ID,
+  useBoards, Board, BoardSkin, BoardPerm, DEFAULT_BOARD_CATS, MAIN_BOARD_ID, PAINT_BOARD_ID, boardHref,
 } from '@/lib/boardStore';
 import { useThreadSettings, ThreadWork, THREAD_SEED, ThreadCat, threadBadgeStyle, threadCats, threadCatsPatch } from '@/lib/threadStore';
 import { useTrpgSettings, DOTORI_STATUS_KEYS, DotoriStatus, dotoriBadgeStyle } from '@/lib/galleryStore';
@@ -712,25 +712,18 @@ function WidgetsPane() {
 
 /** 게시판 관리 탭 (5.2) — 게시판 생성·삭제·스킨·권한 + 게시판별 말머리 + 뱃지 색 */
 function BoardPane() {
-  const {
-    st, patchSystem, patchGallery,
-    patchGalleryCat, addGalleryCat, removeGalleryCat, setGalleryCats,
-  } = useBoardSettings();
+  const { st, patchSystem } = useBoardSettings();
   const { boards, setBoards, patchBoard } = useBoards();
   const [catBoard, setCatBoard] = useState(MAIN_BOARD_ID);   // 말머리 편집 대상 게시판
-  /* 갤러리 말머리도 갤러리마다 따로 (v2.0 사용자 요청) — 어느 갤러리 것을 고칠지 고른다.
-     하나뿐이면 고를 것이 없으니 선택 줄을 아예 두지 않는다 (감상타래와 같은 방식) */
-  const { list: secList } = useSections();
-  const galSecs = secList('gallery');
-  const [galSecSel, setGalSec] = useState(MAIN_SEC);
-  const galSec = galSecs.some(s2 => s2.id === galSecSel) ? galSecSel : MAIN_SEC;
-  const galCats = galleryCatsOf(st, galSec);
   const del = useConfirmDelete();
 
   const sel = boards.find(b => b.id === catBoard) ?? boards[0];
-  const setCats = (cats: BoardBadge[]) => patchBoard(sel.id, { cats });
   const patchCat = (id: string, p: Partial<BoardBadge>) =>
     patchBoard(sel.id, { cats: sel.cats.map(c => (c.id === id ? { ...c, ...p } : c)) });
+  const addCat = () => patchBoard(sel.id, {
+    cats: [...sel.cats, { id: newId(), label: '새 말머리', bg: '#eef0f2', border: '#d7dae0', fg: '#5d636d' }],
+  });
+  const removeCat = (id: string) => patchBoard(sel.id, { cats: sel.cats.filter(c => c.id !== id) });
 
   const colorCells = (b: BoardBadge, patch: (p: Partial<BoardBadge>) => void) => (
     <>
@@ -743,22 +736,218 @@ function BoardPane() {
     </>
   );
 
+  const addBoard = () => {
+    const id = newId();
+    setBoards([...boards, {
+      id, name: '새 게시판', desc: '', skin: 'list', permWrite: 'member', permComment: 'member',
+      cats: DEFAULT_BOARD_CATS.map(c => ({ ...c, id: newId() })),
+    }]);
+  };
+  const removeBoard = (id: string) => {
+    setBoards(boards.filter(b => b.id !== id));
+    if (catBoard === id) setCatBoard(MAIN_BOARD_ID);
+  };
+
+  const skinLabel: Record<BoardSkin, string> = { list: '기본형', ticket: '티켓형', paint: '그림판형' };
+  const permLabel: Record<BoardPerm, string> = { guest: '전체', member: '회원', admin: '관리자' };
+
   return (
     <div className="set-sec">
       <h3>게시판 관리</h3>
-      <div className="d">게시판 생성·삭제·스킨·말머리·뱃지 스타일 설정</div>
+      <div className="d">게시판 생성·삭제·스킨·말머리·뱃지 스타일 설정 — 게시판을 지워도 글 데이터는 남아 있습니다</div>
+
+      <h4 style={{ fontSize: 12.5, margin: '18px 0 4px' }}>게시판 목록</h4>
+      <DragList
+        items={boards}
+        keyOf={b => b.id}
+        onReorder={setBoards}
+        render={b => (
+          <div className="set-row" style={{ width: '100%', flexWrap: 'wrap' }}>
+            <div className="l" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <span className="drag-h">⠿</span>
+              <LiveInput value={b.name} onValue={v => patchBoard(b.id, { name: v })} style={{ width: 110 }} />
+              <small style={{ color: 'var(--faint)' }}>{boardHref(b.id)}</small>
+            </div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <div className="mini-seg">
+                {(['list', 'ticket', 'paint'] as BoardSkin[]).map(sk => (
+                  <button key={sk} className={b.skin === sk ? 'on' : ''}
+                    onClick={() => patchBoard(b.id, { skin: sk })}>{skinLabel[sk]}</button>
+                ))}
+              </div>
+              <span className="cp-lb">글쓰기</span>
+              <KSelect minWidth={70} value={b.permWrite} onChange={v => patchBoard(b.id, { permWrite: v as BoardPerm })}
+                options={(['guest', 'member', 'admin'] as BoardPerm[]).map(p => ({ value: p, label: permLabel[p] }))} />
+              <span className="cp-lb">댓글</span>
+              <KSelect minWidth={70} value={b.permComment} onChange={v => patchBoard(b.id, { permComment: v as BoardPerm })}
+                options={(['guest', 'member', 'admin'] as BoardPerm[]).map(p => ({ value: p, label: permLabel[p] }))} />
+              {b.id === MAIN_BOARD_ID || b.id === PAINT_BOARD_ID ? (
+                <span className="pill" data-tip="기본 게시판은 삭제할 수 없습니다">고정</span>
+              ) : (
+                <button className="btn btn-ghost" style={{ fontSize: 11, padding: '5px 12px' }}
+                  onClick={() => del.ask(`「${b.name}」 게시판을 삭제할까요? 이미 쓴 글은 남지만 목록에서는 더 이상 보이지 않습니다.`,
+                    () => removeBoard(b.id))}>DELETE</button>
+              )}
+            </div>
+          </div>
+        )}
+      />
+      <button className="btn btn-ghost" onClick={addBoard} style={{ fontSize: 11, padding: '7px 14px', marginTop: 8 }}>＋ 게시판 추가</button>
+      {del.element}
+
+      <h4 style={{ fontSize: 12.5, margin: '26px 0 4px' }}>말머리(카테고리)</h4>
+      <div className="d" style={{ marginBottom: 10 }}>게시판마다 따로 관리 — 어느 게시판 것을 고칠지 먼저 골라 주세요</div>
+      <KSelect minWidth={140} value={sel.id} onChange={setCatBoard}
+        options={boards.map(b => ({ value: b.id, label: b.name }))} />
+
+      <div style={{ marginTop: 10 }}>
+        {sel.cats.map(c => (
+          <div className="set-row" key={c.id}>
+            <div className="l"><LiveInput value={c.label} onValue={v => patchCat(c.id, { label: v })} style={{ width: 100 }} /></div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              {colorCells(c, p => patchCat(c.id, p))}
+              <button className="btn btn-ghost" style={{ fontSize: 11, padding: '4px 10px' }}
+                onClick={() => removeCat(c.id)}>삭제</button>
+            </div>
+          </div>
+        ))}
+        {sel.cats.length === 0 && <p className="hint">말머리가 없습니다 — 추가해 주세요</p>}
+      </div>
+      <button className="btn btn-ghost" onClick={addCat} style={{ fontSize: 11, padding: '7px 14px', marginTop: 8 }}>＋ 말머리 추가</button>
+
+      <h4 style={{ fontSize: 12.5, margin: '26px 0 4px' }}>시스템 뱃지 색</h4>
+      <div className="d" style={{ marginBottom: 10 }}>공지·비밀·접힘 — 모든 게시판 공통, 이름은 그대로 두고 색만 바꿀 수 있습니다</div>
+      {st.system.map(b => (
+        <div className="set-row" key={b.id}>
+          <div className="l">{b.label}</div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            {colorCells(b, p => patchSystem(b.id, p))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** 메뉴 관리 탭 (5.2) — 상단 메뉴 트리를 자유롭게: 그룹 생성·삭제·순서, 항목 배치·순서·공개범위.
+ *  게시판·섹션(갤러리 등 여러 개로 만든 목록)·커스텀 링크는 만들어도 자동으로 메뉴에 붙지 않고
+ *  「미배치」에 머문다 — 원하는 그룹에 직접 넣어야 노출된다 (사용자 확정, 3장 원칙: 데이터는 보존). */
+function MenuPane() {
+  const [ms, patchMenu] = useMenuSettings();
+  const { boards } = useBoards();
+  const { map: secMap } = useSections();
+  const { links } = useCustomLinks();
+  const del = useConfirmDelete();
+
+  const tree = ms.tree ?? defaultTree();
+  const extra = [...boardEntries(boards), ...sectionMenuEntries(secMap), ...linkEntries(links)];
+  const placedHrefs = new Set(tree.flatMap(g => (g.href ? [g.href] : g.items.map(it => it.href))));
+  const unplaced = [
+    ...FEATURES.filter(f => !placedHrefs.has(f.href)).map(f => ({ href: f.href, name: f.label })),
+    ...extra.filter(e => !placedHrefs.has(e.href)),
+  ];
+
+  const setTree = (next: MenuGroupNode[]) => patchMenu({ tree: next });
+  const addGroup = () => setTree([...tree, { id: newGroupId(), label: '새 그룹', items: [] }]);
+  const removeGroup = (id: string) => setTree(tree.filter(g => g.id !== id));
+  const patchGroup = (id: string, p: Partial<MenuGroupNode>) =>
+    setTree(tree.map(g => (g.id === id ? { ...g, ...p } : g)));
+  const addItemTo = (groupId: string, href: string) =>
+    setTree(tree.map(g => (g.id === groupId ? { ...g, items: [...g.items, { href }] } : g)));
+  const removeItem = (groupId: string, href: string) =>
+    setTree(tree.map(g => (g.id === groupId ? { ...g, items: g.items.filter(it => it.href !== href) } : g)));
+  const patchItem = (groupId: string, href: string, p: Partial<MenuLeaf>) =>
+    setTree(tree.map(g => (g.id === groupId ? { ...g, items: g.items.map(it => (it.href === href ? { ...it, ...p } : it)) } : g)));
+  const moveItem = (fromId: string, toId: string, href: string) => {
+    if (fromId === toId || !toId) return;
+    const leaf = tree.find(g => g.id === fromId)?.items.find(it => it.href === href);
+    if (!leaf) return;
+    setTree(tree.map(g => {
+      if (g.id === fromId) return { ...g, items: g.items.filter(it => it.href !== href) };
+      if (g.id === toId) return { ...g, items: [...g.items, leaf] };
+      return g;
+    }));
+  };
+  const labelOf = (href: string, label?: string) => label ?? menuLabelFor(href, extra) ?? href;
+  const visOptions = [
+    { value: 'all', label: '전체' }, { value: 'member', label: '회원' }, { value: 'admin', label: '관리자' },
+  ];
+
+  return (
+    <div className="set-sec">
+      <h3>메뉴 관리</h3>
+      <div className="d">상단 메뉴 그룹·항목을 자유롭게 구성 — 메뉴에서 빼도 데이터는 그대로 남습니다</div>
+
+      <DragList
+        items={tree}
+        keyOf={g => g.id}
+        onReorder={setTree}
+        render={g => (
+          <div className="panel" style={{ padding: 14, marginBottom: 10, width: '100%' }}>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8, flexWrap: 'wrap' }}>
+              <span className="drag-h">⠿</span>
+              <LiveInput value={g.label} onValue={v => patchGroup(g.id, { label: v })} style={{ width: 130 }} />
+              {g.href && <span className="pill">단독 메뉴 · {g.href}</span>}
+              <span className="cp-lb">공개범위</span>
+              <KSelect minWidth={90} value={g.vis ?? 'all'} onChange={v => patchGroup(g.id, { vis: v as MenuVis })} options={visOptions} />
+              <button className="btn btn-ghost" style={{ marginLeft: 'auto', fontSize: 11, padding: '5px 12px' }}
+                onClick={() => del.ask(`「${g.label}」 그룹을 삭제할까요? 안의 항목은 미배치로 돌아갑니다.`, () => removeGroup(g.id))}>DELETE</button>
+            </div>
+            {!g.href && (
+              g.items.length > 0 ? (
+                <DragList
+                  items={g.items}
+                  keyOf={it => it.href}
+                  onReorder={list => patchGroup(g.id, { items: list })}
+                  render={it => (
+                    <div className="set-row" style={{ width: '100%', padding: '6px 0' }}>
+                      <div className="l" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                        <span className="drag-h">⠿</span>
+                        <LiveInput value={it.label ?? ''} onValue={v => patchItem(g.id, it.href, { label: v || undefined })}
+                          placeholder={labelOf(it.href)} style={{ width: 110 }} />
+                        <small style={{ color: 'var(--faint)' }}>{it.href}</small>
+                      </div>
+                      <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                        <KSelect minWidth={80} value={it.vis ?? 'all'} onChange={v => patchItem(g.id, it.href, { vis: v as MenuVis })} options={visOptions} />
+                        <KSelect minWidth={100} value="" onChange={toId => moveItem(g.id, toId, it.href)}
+                          options={[{ value: '', label: '다른 그룹으로' }, ...tree.filter(x => x.id !== g.id && !x.href).map(x => ({ value: x.id, label: x.label }))]} />
+                        <button className="btn btn-ghost" style={{ fontSize: 11, padding: '4px 10px' }}
+                          onClick={() => removeItem(g.id, it.href)}>빼기</button>
+                      </div>
+                    </div>
+                  )}
+                />
+              ) : <p className="hint">이 그룹에는 항목이 없습니다 — 아래 「미배치」에서 추가해 주세요</p>
+            )}
+          </div>
+        )}
+      />
+      <button className="btn btn-ghost" onClick={addGroup} style={{ fontSize: 11, padding: '7px 14px' }}>＋ 그룹 추가</button>
+      {del.element}
+
+      <h4 style={{ fontSize: 12.5, margin: '22px 0 4px' }}>미배치 — 아직 메뉴에 없는 기능</h4>
+      <div className="d" style={{ marginBottom: 8 }}>그룹을 골라 추가하면 상단 메뉴에 나타납니다 (그림판 게시판도 여기서 추가)</div>
+      {unplaced.map(u => (
+        <div className="set-row" key={u.href}>
+          <div className="l">{u.name}<small>{u.href}</small></div>
+          <KSelect minWidth={150} value="" onChange={gid => { if (gid) addItemTo(gid, u.href); }}
+            options={[{ value: '', label: '그룹 선택' }, ...tree.filter(g => !g.href).map(g => ({ value: g.id, label: g.label }))]} />
+        </div>
+      ))}
+      {unplaced.length === 0 && <p className="hint">모든 기능이 메뉴에 배치돼 있습니다</p>}
     </div>
   );
 }
 
 /* ---------- 카테고리 → 화면 매핑 ----------
- * 지금 실제로 구현된 건 4개뿐 (디자인 / 메인 페이지 / 위젯 / 게시판 관리).
+ * 지금 실제로 구현된 건 5개 (디자인 / 메인 페이지 / 위젯 / 메뉴 관리 / 게시판 관리).
  * 나머지 카테고리는 이전 커밋 어딘가에 있던 구현이 빠져 있는 상태 — 저장소 히스토리에서
  * 복원 전까지는 "준비 중" 안내만 표시한다 (없는 걸 있는 척하지 않기 위해). */
 const CAT_PANE: Partial<Record<typeof CATEGORIES[number], () => React.ReactElement>> = {
   '디자인': DesignPane,
   '메인 페이지': MainPagePane,
   '위젯': WidgetsPane,
+  '메뉴 관리': MenuPane,
   '게시판 관리': BoardPane,
 };
 
