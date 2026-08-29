@@ -750,3 +750,76 @@ function BoardPane() {
     </div>
   );
 }
+
+/* ---------- 카테고리 → 화면 매핑 ----------
+ * 지금 실제로 구현된 건 4개뿐 (디자인 / 메인 페이지 / 위젯 / 게시판 관리).
+ * 나머지 카테고리는 이전 커밋 어딘가에 있던 구현이 빠져 있는 상태 — 저장소 히스토리에서
+ * 복원 전까지는 "준비 중" 안내만 표시한다 (없는 걸 있는 척하지 않기 위해). */
+const CAT_PANE: Partial<Record<typeof CATEGORIES[number], () => React.ReactElement>> = {
+  '디자인': DesignPane,
+  '메인 페이지': MainPagePane,
+  '위젯': WidgetsPane,
+  '게시판 관리': BoardPane,
+};
+
+function SettingsInner() {
+  const router = useRouter();
+  const params = useSearchParams();
+  const { isAdmin, ready } = useAuth();
+  const tabParam = params.get('tab');
+  const initial = (CATEGORIES as readonly string[]).includes(tabParam ?? '')
+    ? (tabParam as typeof CATEGORIES[number]) : CATEGORIES[0];
+  const [cat, setCat] = useState<typeof CATEGORIES[number]>(initial);
+
+  const go = (c: typeof CATEGORIES[number]) => {
+    setCat(c);
+    router.replace(`/settings?tab=${encodeURIComponent(c)}`);
+  };
+
+  if (!ready) return <section className="page" />;
+  if (!isAdmin) {
+    return (
+      <section className="page">
+        <div className="page-head"><PageTitle>SETTINGS</PageTitle><p>관리자 전용 페이지입니다</p></div>
+      </section>
+    );
+  }
+
+  const Pane = CAT_PANE[cat];
+
+  return (
+    <section className="page">
+      <div className="page-head">
+        <PageTitle>SETTINGS</PageTitle>
+        <EditableDesc k="settings-desc" def="사이트 환경설정 — 왼쪽에서 카테고리를 골라 주세요" />
+      </div>
+      <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+        <nav style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 148 }}>
+          {CATEGORIES.map(c => (
+            <button key={c} onClick={() => go(c)}
+              style={{
+                textAlign: 'left', padding: '9px 12px', borderRadius: 8, fontSize: 12.5,
+                border: 'none', cursor: 'var(--cur-pointer,pointer)',
+                background: c === cat ? 'var(--accent)' : 'transparent',
+                color: c === cat ? '#fff' : 'var(--sub)',
+                fontWeight: c === cat ? 700 : 400,
+              }}>{c}</button>
+          ))}
+        </nav>
+        <div className="panel" style={{ flex: 1, padding: 24, minWidth: 280 }}>
+          {Pane ? <Pane /> : (
+            <div className="set-sec">
+              <h3>{cat}</h3>
+              <div className="d">이 카테고리 화면은 아직 복구되지 않았습니다 — 저장소 커밋 히스토리에서 이전 버전을 찾아 복원이 필요합니다.</div>
+            </div>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+export default function SettingsPage() {
+  // useSearchParams는 Suspense 경계 필요 (Next App Router)
+  return <Suspense fallback={<section className="page" />}><SettingsInner /></Suspense>;
+}
