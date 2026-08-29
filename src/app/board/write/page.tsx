@@ -35,9 +35,17 @@ function WriteInner() {
   const board = boards.find(b => b.id === bid) ?? boards[0];
   const isPaint = board.skin === 'paint';
   const originPost = originId ? posts.find(p => p.id === originId) : undefined;
+  // 원본 글이 비밀글인데 볼 권한이 없으면 이어그리기 자체를 성립시키지 않는다 (v2.0) —
+  // 그림만 몰래 가져와 새 글을 만들 수 있으면 비밀글 보호가 뚫린다
+  const canReadOrigin = !originPost || !originPost.secret || isAdmin || (!!user && originPost.authorId === user.id);
+  const usableOrigin = canReadOrigin ? originPost : undefined;
   const canvasRef = useRef<PaintCanvasHandle | null>(null);
   // 그림판 캔버스에 처음 얹을 이미지 — 수정 중이면 기존 그림, 이어그리기면 원본 글 그림
-  const paintBaseImage = editing ? firstImage(editing.body) : (originPost ? firstImage(originPost.body) : undefined);
+  const paintBaseImage = editing ? firstImage(editing.body) : (usableOrigin ? firstImage(usableOrigin.body) : undefined);
+  useEffect(() => {
+    if (originId && !canReadOrigin) toast('원본 그림을 볼 수 없어 새 그림으로 시작합니다');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [originId, canReadOrigin]);
   const [title, setTitle] = useState('');
   const [writeMode, setWriteMode] = useState<'editor' | 'md' | 'html'>('editor'); // 에디터가 기본
   const [body, setBody] = useState('');
@@ -85,10 +93,23 @@ function WriteInner() {
 
   const preview = useMemo(() => renderBody(writeMode === 'md' ? 'md' : 'html', body), [writeMode, body]);
 
-  if (!user) {
+  // 방문자(비로그인) 글쓰기 — 그 게시판의 글쓰기 권한이 "전체"일 때만, 새 글에 한해서 허용
+  // (수정은 언제나 로그인 필요 — 본인 확인 수단이 없어 손댈 수 없게)
+  const [guestName, setGuestName] = useState('');
+  const guestAllowed = !editing && board.permWrite === 'guest';
+
+  if (!user && !guestAllowed) {
     return (
       <section className="page">
         <div className="page-head"><PageTitle>WRITE</PageTitle><p>글쓰기는 로그인 후 이용할 수 있습니다</p></div>
+      </section>
+    );
+  }
+  // 수정은 언제나 작성자 본인만 — 폼에 내용을 채우기 전에 막아야 타인의 비밀글 내용이 잠깐이라도 보이지 않는다
+  if (editing && (!user || editing.authorId !== user.id)) {
+    return (
+      <section className="page">
+        <div className="page-head"><PageTitle>WRITE</PageTitle><p>수정은 작성자 본인만 할 수 있습니다</p></div>
       </section>
     );
   }
@@ -107,8 +128,8 @@ function WriteInner() {
       toast('제목과 내용을 입력해 주세요'); return;
     }
     if (editing) {
-      // 수정 — 작성자 본인만 (관리자도 타인 글은 삭제만, v1.9). 작성자/날짜/댓글/소속 게시판은 유지
-      if (editing.authorId !== user.id) { toast('수정은 작성자 본인만 할 수 있습니다'); return; }
+      // 수정 — 작성자 본인만, 그리고 언제나 로그인 상태여야 함 (게스트 글은 본인 확인 수단이 없어 수정 불가)
+      if (!user || editing.authorId !== user.id) { toast('수정은 작성자 본인만 할 수 있습니다'); return; }
       setPosts(posts.map(p => (p.id === editing.id ? {
         ...p,
         title: title.trim(), body: finalBody,
@@ -123,16 +144,21 @@ function WriteInner() {
       router.push(`/board/${editing.id}`);
       return;
     }
+    // 로그인 상태면 회원 정보 그대로, 아니면(게스트 글쓰기 허용 게시판) 입력한 닉네임으로 —
+    // authorId ''는 기존 "게스트 댓글" 관례와 동일 (postStore.ts 주석 참고)
+    const authorName = user ? user.nickname : (guestName.trim() || '손님');
+    const authorIdVal = user ? user.id : '';
     const p: Post = {
       id: newId(), title: title.trim(), body: finalBody,
       mode: isPaint ? 'html' : (writeMode === 'md' ? 'md' : 'html'), category,
-      author: user.nickname, authorId: user.id, date: new Date().toISOString(),
-      secret, notice: isAdmin && notice,
+      author: authorName, authorId: authorIdVal, date: new Date().toISOString(),
+      secret: user ? secret : false,   // 게스트 글은 본인 확인 수단이 없어 비밀글로 못 남김 — 작성자 본인도 나중에 못 열게 되는 걸 막기 위함
+      notice: isAdmin && notice,
       fold: foldType === 'none' ? null : { type: foldType, label: foldType === 'custom' ? foldLabel : undefined },
       comments: [],
       boardId: board.id,   // 소속 게시판 (5.2 다중 게시판)
       thumbSrc, thumbCrop,
-      originId: isPaint ? (originId ?? undefined) : undefined,
+      originId: isPaint ? (usableOrigin?.id ?? undefined) : undefined,
     };
     setPosts([p, ...posts]);
     toast('등록되었습니다');
@@ -152,6 +178,13 @@ function WriteInner() {
             <label className="k-label" style={{ width: 60 }}>제목</label>
             <KInput value={title} onChange={e => setTitle(e.target.value)} style={{ flex: 1 }} />
           </div>
+          {!user && (
+            <div className="form-row">
+              <label className="k-label" style={{ width: 60 }}>닉네임</label>
+              <KInput value={guestName} onChange={e => setGuestName(e.target.value)}
+                placeholder="손님 (비워 두면 '손님'으로 등록)" style={{ flex: 1 }} />
+            </div>
+          )}
           {isPaint ? (
             <PaintCanvas ref={canvasRef} initialImageUrl={paintBaseImage} lockSize={!!paintBaseImage} />
           ) : (
@@ -218,7 +251,9 @@ function WriteInner() {
                 options={board.cats.map(x => ({ value: x.label, label: x.label }))} placeholder='말머리 선택' />
             </div>
             <div style={{ display: 'grid', gap: 9 }}>
-              <KCheck label="비밀글 (관리자와 나만 열람)" checked={secret} onChange={setSecret} />
+              {user
+                ? <KCheck label="비밀글 (관리자와 나만 열람)" checked={secret} onChange={setSecret} />
+                : <p className="hint" style={{ margin: 0 }}>손님 글쓰기는 나중에 다시 열어볼 본인 확인 수단이 없어 비밀글로 남길 수 없습니다</p>}
               {isAdmin && <KCheck label="공지로 고정" checked={notice} onChange={setNotice} />}
             </div>
           </div>

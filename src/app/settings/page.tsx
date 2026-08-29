@@ -20,7 +20,7 @@ import {
   useBoards, Board, BoardSkin, BoardPerm, DEFAULT_BOARD_CATS, MAIN_BOARD_ID, PAINT_BOARD_ID, boardHref,
 } from '@/lib/boardStore';
 import { useThreadSettings, ThreadWork, THREAD_SEED, ThreadCat, threadBadgeStyle, threadCats, threadCatsPatch } from '@/lib/threadStore';
-import { useTrpgSettings, DOTORI_STATUS_KEYS, DotoriStatus, dotoriBadgeStyle } from '@/lib/galleryStore';
+import { useTrpgSettings, DOTORI_STATUS_KEYS, DotoriStatus, DotoriStatusStyle, dotoriBadgeStyle } from '@/lib/galleryStore';
 import { useMemoSettings } from '@/lib/memoStore';
 import {
   useMenuSettings, MenuSettings, MenuPerm, MenuVis, PLAYLOG_COLS,
@@ -39,7 +39,7 @@ import { SymbolInput } from '@/components/ui/SymbolInput';
 import { allBlobs, putBlobAs, useBlobUrl, getBlob } from '@/lib/blobStore';
 import { parseAni } from '@/lib/aniCursor';
 import { fileDrop } from '@/lib/dnd';
-import { Character, CHAR_SEED, Relation, REL_SEED } from '@/lib/charStore';
+import { Character, CHAR_SEED, Relation, REL_SEED, RelCpTag } from '@/lib/charStore';
 import { useLocalList } from '@/lib/postStore';
 import { Mood, MOOD_SEED, moodTint } from '@/lib/diaryStore';
 import {
@@ -946,16 +946,641 @@ function MenuPane() {
   );
 }
 
+/** 무드 리스트 — 다이어리에서 고르는 기분 태그 */
+function MoodPane() {
+  const [moods, setMoods] = useLocalList<Mood>('ohome.moods.v1', MOOD_SEED);
+  const del = useConfirmDelete();
+  const patchMood = (id: string, p: Partial<Mood>) => setMoods(moods.map(m => (m.id === id ? { ...m, ...p } : m)));
+  const addMood = () => setMoods([...moods, { id: newId(), name: '새 무드', icon: '🙂', color: '#8a8f98' }]);
+  const removeMood = (id: string) => setMoods(moods.filter(m => m.id !== id));
+
+  return (
+    <div className="set-sec">
+      <h3>무드 리스트</h3>
+      <div className="d">다이어리에서 고르는 기분 태그 — 아이콘(이모지 1~2자)·이름·색</div>
+      <DragList
+        items={moods}
+        keyOf={m => m.id}
+        onReorder={setMoods}
+        render={m => (
+          <div className="set-row" style={{ width: '100%' }}>
+            <div className="l" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <span className="drag-h">⠿</span>
+              <span style={{
+                background: moodTint(m.color), color: m.color, width: 30, height: 30, borderRadius: '50%',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, flexShrink: 0,
+              }}>{m.icon || '·'}</span>
+              <LiveInput value={m.icon} onValue={v => patchMood(m.id, { icon: v.slice(0, 2) })} style={{ width: 44, textAlign: 'center' }} />
+              <LiveInput value={m.name} onValue={v => patchMood(m.id, { name: v })} style={{ width: 100 }} />
+            </div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <span className="cp-lb">색</span>
+              <ColorField value={m.color} onChange={hex => patchMood(m.id, { color: hex })} />
+              <button className="btn btn-ghost" style={{ fontSize: 11, padding: '4px 10px' }}
+                onClick={() => del.ask(`무드 「${m.name}」를 삭제할까요?`, () => removeMood(m.id))}>삭제</button>
+            </div>
+          </div>
+        )}
+      />
+      <button className="btn btn-ghost" onClick={addMood} style={{ fontSize: 11, padding: '7px 14px', marginTop: 8 }}>＋ 무드 추가</button>
+      {del.element}
+      {moods.length === 0 && <p className="hint">무드가 없습니다 — 추가해 주세요</p>}
+    </div>
+  );
+}
+
+/** 메모장 탭 — 스티커 메모 보드 권한 */
+function MemoPane() {
+  const [ms, patchMemo] = useMemoSettings();
+  return (
+    <div className="set-sec">
+      <h3>메모장</h3>
+      <div className="d">스티커 메모 보드 — 누가 쓸 수 있는지, 작성자 이름을 보여줄지</div>
+      <div className="set-row">
+        <div className="l"><b>회원 작성 허용</b><small>꺼두면 관리자만 메모를 붙일 수 있습니다</small></div>
+        <KToggle checked={ms.allowMember} onChange={v => patchMemo({ allowMember: v })} />
+      </div>
+      <div className="set-row">
+        <div className="l"><b>작성자 이름 표시</b><small>메모 위에 쓴 사람 이름을 함께 보여줄지</small></div>
+        <KToggle checked={ms.showAuthor} onChange={v => patchMemo({ showAuthor: v })} />
+      </div>
+    </div>
+  );
+}
+
+/** 마우스 커서 탭 — 상태별 커스텀 커서 이미지 + 핫스팟 */
+function CursorRow({ state }: { state: CursorState }) {
+  const [cs, patchCursor] = useCursorSettings();
+  const entry = cs.states[state];
+  const url = useBlobUrl(entry?.imgId);
+  const inputId = `cursorFile-${state}`;
+  return (
+    <div className="set-row" style={{ flexWrap: 'wrap' }}>
+      <div className="l"><b>{CURSOR_STATE_LABEL[state].label}</b><small>{CURSOR_STATE_LABEL[state].desc}</small></div>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        {url && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={url} alt="" style={{ width: 28, height: 28, imageRendering: 'pixelated', border: '1px solid var(--line)', borderRadius: 4 }} />
+        )}
+        <input id={inputId} type="file" accept="image/png" style={{ display: 'none' }}
+          onChange={async e => {
+            const f = e.target.files?.[0];
+            if (f) patchCursor({ states: { ...cs.states, [state]: { imgId: await putBlob(f), hx: entry?.hx ?? 0, hy: entry?.hy ?? 0 } } });
+            e.target.value = '';
+          }} />
+        <button className="btn btn-ghost" style={{ fontSize: 11, padding: '5px 12px' }}
+          onClick={() => document.getElementById(inputId)?.click()}>{entry ? 'CHANGE' : 'UPLOAD'}</button>
+        {entry && (
+          <>
+            <span className="cp-lb">핫스팟 X</span>
+            <KStep value={entry.hx} min={0} max={64}
+              onChange={v => patchCursor({ states: { ...cs.states, [state]: { ...entry, hx: v } } })} />
+            <span className="cp-lb">Y</span>
+            <KStep value={entry.hy} min={0} max={64}
+              onChange={v => patchCursor({ states: { ...cs.states, [state]: { ...entry, hy: v } } })} />
+            <button className="btn btn-ghost" style={{ fontSize: 11, padding: '5px 12px' }}
+              onClick={() => { const next = { ...cs.states }; delete next[state]; patchCursor({ states: next }); }}>REMOVE</button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+function CursorPane() {
+  const [cs, patchCursor] = useCursorSettings();
+  return (
+    <div className="set-sec">
+      <h3>마우스 커서</h3>
+      <div className="d">상태별 커서 이미지(PNG 32px 권장) — 등록하지 않은 상태는 기본 커서를 씁니다</div>
+      <div className="set-row">
+        <div className="l"><b>커스텀 커서 사용</b></div>
+        <KToggle checked={cs.enabled} onChange={v => patchCursor({ enabled: v })} />
+      </div>
+      {(Object.keys(CURSOR_STATE_LABEL) as CursorState[]).map(s => <CursorRow key={s} state={s} />)}
+    </div>
+  );
+}
+
+/** 감상타래 탭 — 작품 분류 + 기본 보기 */
+function ThreadPane() {
+  const [ts, patchThread] = useThreadSettings();
+  const del = useConfirmDelete();
+  const cats = ts.cats;
+  const setCats = (next: ThreadCat[]) => patchThread({ cats: next });
+  const patchCat = (id: string, p: Partial<ThreadCat>) => setCats(cats.map(c => (c.id === id ? { ...c, ...p } : c)));
+  const addCat = () => setCats([...cats, { id: newId(), label: '새 분류' }]);
+  const removeCat = (id: string) => setCats(cats.filter(c => c.id !== id));
+
+  return (
+    <div className="set-sec">
+      <h3>감상타래</h3>
+      <div className="d">작품 분류(도서/영화/드라마 등) 관리 + 기본 보기</div>
+
+      <div className="set-row">
+        <div className="l"><b>기본 보기</b><small>메뉴 진입 시 먼저 보일 화면</small></div>
+        <div className="mini-seg">
+          <button className={ts.defaultView === 'thread' ? 'on' : ''} onClick={() => patchThread({ defaultView: 'thread' })}>타래형</button>
+          <button className={ts.defaultView === 'list' ? 'on' : ''} onClick={() => patchThread({ defaultView: 'list' })}>목록형</button>
+        </div>
+      </div>
+
+      <h4 style={{ fontSize: 12.5, margin: '18px 0 4px' }}>분류</h4>
+      <DragList
+        items={cats}
+        keyOf={c => c.id}
+        onReorder={setCats}
+        render={c => (
+          <div className="set-row" style={{ width: '100%' }}>
+            <div className="l" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <span className="drag-h">⠿</span>
+              <LiveInput value={c.label} onValue={v => patchCat(c.id, { label: v })} style={{ width: 100 }} />
+            </div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <span className="cp-lb">배경</span>
+              <ColorField value={c.bg ?? '#eef0f2'} onChange={hex => patchCat(c.id, { bg: hex })} />
+              <span className="cp-lb">테두리</span>
+              <ColorField value={c.border ?? '#d7dae0'} onChange={hex => patchCat(c.id, { border: hex })} />
+              <span className="cp-lb">글씨</span>
+              <ColorField value={c.fg ?? '#5d636d'} onChange={hex => patchCat(c.id, { fg: hex })} />
+              <button className="btn btn-ghost" style={{ fontSize: 11, padding: '4px 10px' }}
+                onClick={() => del.ask(`분류 「${c.label}」를 삭제할까요?`, () => removeCat(c.id))}>삭제</button>
+            </div>
+          </div>
+        )}
+      />
+      <button className="btn btn-ghost" onClick={addCat} style={{ fontSize: 11, padding: '7px 14px', marginTop: 8 }}>＋ 분류 추가</button>
+      {del.element}
+      <p className="hint">감상타래를 여러 개(섹션)로 만들었다면 지금은 모든 섹션이 이 분류를 같이 씁니다 — 섹션별로 따로 관리하는 기능은 필요하시면 다음에 추가해 드릴게요</p>
+    </div>
+  );
+}
+
+/** 자관 질문 탭 — CP/NCP 질문 세트 관리 */
+function RelqPane() {
+  const [sets, setSets] = useLocalList<RelQuestionSet>(RELQ_KEY, RELQ_SEED);
+  const del = useConfirmDelete();
+  const [sel, setSel] = useState<string>('');
+  const active = sets.find(s => s.id === sel) ?? sets[0];
+
+  const patchSet = (id: string, p: Partial<RelQuestionSet>) => setSets(sets.map(s => (s.id === id ? { ...s, ...p } : s)));
+  const addSet = () => {
+    const id = newId();
+    setSets([...sets, { id, name: '새 질문 세트', cat: 'cp', questions: [] }]);
+    setSel(id);
+  };
+  const removeSet = (id: string) => { setSets(sets.filter(s => s.id !== id)); if (sel === id) setSel(''); };
+  const addQ = () => { if (active) patchSet(active.id, { questions: [...active.questions, '새 질문'] }); };
+  const patchQ = (i: number, v: string) => { if (active) patchSet(active.id, { questions: active.questions.map((q, j) => (j === i ? v : q)) }); };
+  const removeQ = (i: number) => { if (active) patchSet(active.id, { questions: active.questions.filter((_, j) => j !== i) }); };
+
+  return (
+    <div className="set-sec">
+      <h3>자관 질문</h3>
+      <div className="d">자관·AU의 CP/NCP 질문 세트 관리</div>
+
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 14 }}>
+        <KSelect minWidth={170} value={active?.id ?? ''} onChange={setSel}
+          options={sets.length ? sets.map(s => ({ value: s.id, label: `${s.name} (${CP_LABEL[s.cat]})` })) : [{ value: '', label: '세트 없음' }]} />
+        <button className="btn btn-ghost" style={{ fontSize: 11, padding: '6px 14px' }} onClick={addSet}>＋ 세트 추가</button>
+        {active && (
+          <button className="btn btn-ghost" style={{ fontSize: 11, padding: '6px 14px' }}
+            onClick={() => del.ask(`「${active.name}」 세트를 삭제할까요?`, () => removeSet(active.id))}>DELETE</button>
+        )}
+      </div>
+
+      {active ? (
+        <>
+          <div className="form-row">
+            <label className="k-label" style={{ width: 60 }}>이름</label>
+            <LiveInput value={active.name} onValue={v => patchSet(active.id, { name: v })} style={{ flex: 1 }} />
+          </div>
+          <div className="form-row">
+            <label className="k-label" style={{ width: 60 }}>구분</label>
+            <div className="mini-seg">
+              <button className={active.cat === 'cp' ? 'on' : ''} onClick={() => patchSet(active.id, { cat: 'cp' as RelCpTag })}>CP</button>
+              <button className={active.cat === 'ncp' ? 'on' : ''} onClick={() => patchSet(active.id, { cat: 'ncp' as RelCpTag })}>NCP</button>
+            </div>
+          </div>
+
+          <h4 style={{ fontSize: 12.5, margin: '18px 0 4px' }}>질문 목록</h4>
+          {active.questions.map((q, i) => (
+            <div className="set-row" key={i}>
+              <div className="l" style={{ flex: 1 }}><LiveInput value={q} onValue={v => patchQ(i, v)} style={{ width: '100%' }} /></div>
+              <button className="btn btn-ghost" style={{ fontSize: 11, padding: '4px 10px' }} onClick={() => removeQ(i)}>삭제</button>
+            </div>
+          ))}
+          <button className="btn btn-ghost" onClick={addQ} style={{ fontSize: 11, padding: '7px 14px', marginTop: 8 }}>＋ 질문 추가</button>
+        </>
+      ) : (
+        <p className="hint">세트가 없습니다 — 위에서 「세트 추가」를 눌러 시작해 주세요</p>
+      )}
+      {del.element}
+    </div>
+  );
+}
+
+/** 커미션 탭 — 슬롯·썸네일·뱃지·공개범위 */
+function CommBadgeList({ title, badges, setBadges }: { title: string; badges: CommBadge[]; setBadges: (b: CommBadge[]) => void }) {
+  const del = useConfirmDelete();
+  const patch = (id: string, p: Partial<CommBadge>) => setBadges(badges.map(b => (b.id === id ? { ...b, ...p } : b)));
+  const add = () => setBadges([...badges, { id: newId(), label: '새 뱃지', bg: '#eef0f2', border: '#d7dae0', fg: '#5d636d' }]);
+  const remove = (id: string) => setBadges(badges.filter(b => b.id !== id));
+  return (
+    <>
+      <h4 style={{ fontSize: 12.5, margin: '18px 0 4px' }}>{title}</h4>
+      <DragList
+        items={badges}
+        keyOf={b => b.id}
+        onReorder={setBadges}
+        render={b => (
+          <div className="set-row" style={{ width: '100%' }}>
+            <div className="l" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <span className="drag-h">⠿</span>
+              <LiveInput value={b.label} onValue={v => patch(b.id, { label: v })} style={{ width: 100 }} />
+            </div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <span className="cp-lb">배경</span><ColorField value={b.bg} onChange={hex => patch(b.id, { bg: hex })} />
+              <span className="cp-lb">테두리</span><ColorField value={b.border} onChange={hex => patch(b.id, { border: hex })} />
+              <span className="cp-lb">글씨</span><ColorField value={b.fg} onChange={hex => patch(b.id, { fg: hex })} />
+              <button className="btn btn-ghost" style={{ fontSize: 11, padding: '4px 10px' }}
+                onClick={() => del.ask(`뱃지 「${b.label}」를 삭제할까요?`, () => remove(b.id))}>삭제</button>
+            </div>
+          </div>
+        )}
+      />
+      <button className="btn btn-ghost" onClick={add} style={{ fontSize: 11, padding: '7px 14px', marginTop: 8 }}>＋ 뱃지 추가</button>
+      {del.element}
+    </>
+  );
+}
+function CommPane() {
+  const [cs, patchComm] = useCommSettings();
+  return (
+    <div className="set-sec">
+      <h3>커미션</h3>
+      <div className="d">슬롯·썸네일 비율·신청자 뱃지·공개범위 설정</div>
+
+      <div className="set-row">
+        <div className="l"><b>썸네일 비율</b></div>
+        <div className="mini-seg">
+          <button className={cs.ratio === '3:4' ? 'on' : ''} onClick={() => patchComm({ ratio: '3:4' })}>3:4</button>
+          <button className={cs.ratio === '4:3' ? 'on' : ''} onClick={() => patchComm({ ratio: '4:3' })}>4:3</button>
+        </div>
+      </div>
+      <div className="set-row">
+        <div className="l"><b>뱃지 모양</b></div>
+        <div className="mini-seg">
+          <button className={cs.badgeShape === 'round' ? 'on' : ''} onClick={() => patchComm({ badgeShape: 'round' })}>둥근모서리</button>
+          <button className={cs.badgeShape === 'pill' ? 'on' : ''} onClick={() => patchComm({ badgeShape: 'pill' })}>알약형</button>
+        </div>
+      </div>
+      <div className="set-row">
+        <div className="l"><b>통합 슬롯</b><small>전체 슬롯 수 / 사용 중인 수 — 수동으로 관리합니다</small></div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <KStep value={cs.totalSlot} min={0} max={999} onChange={v => patchComm({ totalSlot: v })} />
+          <span className="cp-lb">/ 사용</span>
+          <KStep value={cs.totalUsed} min={0} max={999} onChange={v => patchComm({ totalUsed: v })} />
+        </div>
+      </div>
+      <div className="set-row">
+        <div className="l"><b>슬롯 표시</b><small>「채워진 수」로 보여줄지, 「남은 수」로 보여줄지</small></div>
+        <div className="mini-seg">
+          <button className={(cs.slotDisplay ?? 'used') === 'used' ? 'on' : ''} onClick={() => patchComm({ slotDisplay: 'used' })}>채워진 수</button>
+          <button className={cs.slotDisplay === 'remain' ? 'on' : ''} onClick={() => patchComm({ slotDisplay: 'remain' })}>남은 수</button>
+        </div>
+      </div>
+      <div className="set-row">
+        <div className="l"><b>신청자 리스트 공개범위</b></div>
+        <KSelect minWidth={130} value={cs.applyVisibility} onChange={v => patchComm({ applyVisibility: v as CommSettings['applyVisibility'] })}
+          options={[{ value: 'public', label: '전체' }, { value: 'member', label: '회원' }, { value: 'private', label: '비공개(관리자만)' }]} />
+      </div>
+      <div className="set-row">
+        <div className="l"><b>신청 휴지통 보관 기간</b><small>지나면 자동으로 삭제됩니다</small></div>
+        <KStep value={cs.trashDays} min={1} max={365} suffix="일" onChange={v => patchComm({ trashDays: v })} />
+      </div>
+
+      <CommBadgeList title="작업 뱃지" badges={cs.commBadges} setBadges={b => patchComm({ commBadges: b })} />
+      <CommBadgeList title="신청자 뱃지" badges={cs.applyBadges} setBadges={b => patchComm({ applyBadges: b })} />
+    </div>
+  );
+}
+
+/** TRPG 탭 — 도토리(시나리오) 상태 라벨·뱃지 색 */
+function TrpgPane() {
+  const [ts, patchTrpg] = useTrpgSettings();
+  const patchStatus = (k: DotoriStatus, p: Partial<DotoriStatusStyle>) =>
+    patchTrpg({ statuses: { ...ts.statuses, [k]: { ...ts.statuses[k], ...p } } });
+  return (
+    <div className="set-sec">
+      <h3>TRPG</h3>
+      <div className="d">도토리(시나리오) 상태 라벨과 뱃지 색</div>
+      {DOTORI_STATUS_KEYS.map(k => {
+        const st = ts.statuses[k];
+        return (
+          <div className="set-row" key={k}>
+            <div className="l"><LiveInput value={st.label} onValue={v => patchStatus(k, { label: v })} style={{ width: 100 }} /></div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <span className="cp-lb">배경</span>
+              <ColorField value={st.bg} onChange={hex => patchStatus(k, { bg: hex })} />
+              <span className="cp-lb">테두리</span>
+              <ColorField value={st.border} onChange={hex => patchStatus(k, { border: hex })} />
+              <span className="cp-lb">글씨</span>
+              <ColorField value={st.fg} onChange={hex => patchStatus(k, { fg: hex })} />
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/** 폰트 탭 — 폰트 라이브러리(내장 + 직접 등록). 어디에 쓸지는 「디자인」 탭의 역할 폰트에서 */
+function FontPane() {
+  const { fonts, hiddenCount, addFont, addFontFile, removeFont, resetFont, restoreBuiltins } = useFonts();
+  const toast = useToast();
+  const [name, setName] = useState('');
+  const [family, setFamily] = useState('');
+  const [cssUrl, setCssUrl] = useState('');
+
+  const submit = () => {
+    if (!name.trim() || !family.trim() || !cssUrl.trim()) { toast('이름·family·CSS 주소를 모두 입력해 주세요'); return; }
+    const ok = addFont(name.trim(), family.trim(), cssUrl.trim());
+    if (ok) { setName(''); setFamily(''); setCssUrl(''); toast('폰트가 추가되었습니다'); }
+    else toast('추가하지 못했습니다');
+  };
+
+  return (
+    <div className="set-sec">
+      <h3>폰트</h3>
+      <div className="d">폰트 라이브러리 관리 — 웹폰트 URL 등록 또는 파일 업로드 (어디에 쓸지는 「디자인」 탭의 역할 폰트에서 고릅니다)</div>
+
+      <h4 style={{ fontSize: 12.5, margin: '18px 0 4px' }}>등록된 폰트</h4>
+      {fonts.map(f => (
+        <div className="set-row" key={f.id} style={{ flexWrap: 'wrap' }}>
+          <div className="l" style={{ fontFamily: f.family }}>
+            <b>{f.name}</b>{f.builtin && <span className="pill" style={{ marginLeft: 6 }}>내장</span>}
+            {f.fileName && <small>{f.fileName}</small>}
+          </div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            {f.builtin
+              ? (!f.locked && (
+                <>
+                  <button className="btn btn-ghost" style={{ fontSize: 11, padding: '4px 10px' }} onClick={() => resetFont(f.id)}>초기화</button>
+                  <button className="btn btn-ghost" style={{ fontSize: 11, padding: '4px 10px' }} onClick={() => removeFont(f.id)}>숨기기</button>
+                </>
+              ))
+              : <button className="btn btn-ghost" style={{ fontSize: 11, padding: '4px 10px' }} onClick={() => removeFont(f.id)}>삭제</button>}
+          </div>
+        </div>
+      ))}
+      {hiddenCount > 0 && (
+        <button className="btn btn-ghost" onClick={restoreBuiltins} style={{ fontSize: 11, padding: '7px 14px', marginTop: 8 }}>
+          숨긴 내장 폰트 {hiddenCount}개 복원
+        </button>
+      )}
+
+      <h4 style={{ fontSize: 12.5, margin: '26px 0 4px' }}>URL로 폰트 추가</h4>
+      <div className="d" style={{ marginBottom: 8 }}>눈누 등에서 제공하는 CSS 주소 형식 — 위 「나눔스퀘어 네오」 항목 참고</div>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <KInput placeholder="표시 이름" value={name} onChange={e => setName(e.target.value)} style={{ width: 140 }} />
+        <KInput placeholder="font-family 값 (예: 'MyFont', sans-serif)" value={family} onChange={e => setFamily(e.target.value)} style={{ width: 220 }} />
+        <KInput placeholder="CSS 주소" value={cssUrl} onChange={e => setCssUrl(e.target.value)} style={{ width: 260 }} />
+        <button className="btn btn-dark" onClick={submit}>추가</button>
+      </div>
+
+      <h4 style={{ fontSize: 12.5, margin: '26px 0 4px' }}>파일로 폰트 추가</h4>
+      <div className="d" style={{ marginBottom: 8 }}>woff2 / woff / ttf / otf 파일 업로드</div>
+      <input id="fontFileInput" type="file" accept=".woff2,.woff,.ttf,.otf" style={{ display: 'none' }}
+        onChange={async e => {
+          const f = e.target.files?.[0];
+          if (f) {
+            const ok = await addFontFile(f.name.replace(/\.[^.]+$/, ''), f);
+            toast(ok ? '폰트가 추가되었습니다' : '추가하지 못했습니다');
+          }
+          e.target.value = '';
+        }} />
+      <button className="btn btn-ghost" style={{ fontSize: 11, padding: '7px 14px' }}
+        onClick={() => document.getElementById('fontFileInput')?.click()}>파일 선택</button>
+    </div>
+  );
+}
+
+/** BGM 탭 — 재생목록 + 플레이어 설정 */
+function BgmPane() {
+  const { state, setTracks, addTrack, removeTrack, setSettings } = useBgm();
+  const toast = useToast();
+  const del = useConfirmDelete();
+  const [title, setTitle] = useState('');
+  const [desc, setDesc] = useState('');
+  const [url, setUrl] = useState('');
+
+  const submit = () => {
+    if (!title.trim() || !url.trim()) { toast('제목과 유튜브 URL을 입력해 주세요'); return; }
+    const ok = addTrack(title.trim(), desc.trim(), url.trim());
+    if (ok) { setTitle(''); setDesc(''); setUrl(''); toast('트랙이 추가되었습니다'); }
+    else toast('유튜브 URL(또는 11자리 영상 ID)을 확인해 주세요');
+  };
+
+  return (
+    <div className="set-sec">
+      <h3>BGM</h3>
+      <div className="d">배경음악 재생목록 + 플레이어 설정</div>
+
+      <div className="set-row">
+        <div className="l"><b>플레이어 표시</b></div>
+        <KToggle checked={state.settings.enabled} onChange={v => setSettings({ enabled: v })} />
+      </div>
+      <div className="set-row">
+        <div className="l"><b>위치</b></div>
+        <div className="mini-seg">
+          <button className={state.settings.position === 'br' ? 'on' : ''} onClick={() => setSettings({ position: 'br' })}>오른쪽 아래</button>
+          <button className={state.settings.position === 'bl' ? 'on' : ''} onClick={() => setSettings({ position: 'bl' })}>왼쪽 아래</button>
+        </div>
+      </div>
+      <div className="set-row">
+        <div className="l"><b>기본 볼륨</b></div>
+        <KStep value={state.settings.volume} min={0} max={100} suffix="%" onChange={v => setSettings({ volume: v })} />
+      </div>
+      <div className="set-row">
+        <div className="l"><b>셔플</b></div>
+        <KToggle checked={state.settings.shuffle} onChange={v => setSettings({ shuffle: v })} />
+      </div>
+      <div className="set-row">
+        <div className="l"><b>반복재생</b></div>
+        <KToggle checked={state.settings.repeat} onChange={v => setSettings({ repeat: v })} />
+      </div>
+      <div className="set-row">
+        <div className="l"><b>자동재생</b><small>입장 후 첫 상호작용 시 — 브라우저 정책상 완전 자동재생은 불가</small></div>
+        <KToggle checked={state.settings.autoplay} onChange={v => setSettings({ autoplay: v })} />
+      </div>
+
+      <h4 style={{ fontSize: 12.5, margin: '22px 0 4px' }}>재생목록</h4>
+      <DragList
+        items={state.tracks}
+        keyOf={t => t.id}
+        onReorder={setTracks}
+        render={t => (
+          <div className="set-row" style={{ width: '100%' }}>
+            <div className="l" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <span className="drag-h">⠿</span>
+              <div><b>{t.title}</b><small>{t.desc || t.videoId}</small></div>
+            </div>
+            <button className="btn btn-ghost" style={{ fontSize: 11, padding: '4px 10px' }}
+              onClick={() => del.ask(`「${t.title}」을 목록에서 뺄까요?`, () => removeTrack(t.id))}>삭제</button>
+          </div>
+        )}
+      />
+      {state.tracks.length === 0 && <p className="hint">등록된 곡이 없습니다</p>}
+      {del.element}
+
+      <h4 style={{ fontSize: 12.5, margin: '22px 0 4px' }}>곡 추가</h4>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <KInput placeholder="제목" value={title} onChange={e => setTitle(e.target.value)} style={{ width: 140 }} />
+        <KInput placeholder="설명(선택)" value={desc} onChange={e => setDesc(e.target.value)} style={{ width: 160 }} />
+        <KInput placeholder="유튜브 URL 또는 영상 ID" value={url} onChange={e => setUrl(e.target.value)} style={{ width: 220 }} />
+        <button className="btn btn-dark" onClick={submit}>추가</button>
+      </div>
+    </div>
+  );
+}
+
+/** 회원/보안 탭 — 가입 코드 + 회원 목록 (읽기 전용) */
+function MembersPane() {
+  const members = useMembers();
+  const toast = useToast();
+  const [code, setCode] = useState(() => inviteCode());
+  const [dirty, setDirty] = useState(false);
+  return (
+    <div className="set-sec">
+      <h3>회원/보안</h3>
+      <div className="d">가입 코드 + 가입한 회원 목록</div>
+
+      <div className="set-row">
+        <div className="l"><b>가입 코드</b><small>회원가입 시 입력해야 하는 코드 — 아는 사람만 가입할 수 있게</small></div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <KInput value={code} onChange={e => { setCode(e.target.value); setDirty(true); }} style={{ width: 160 }} />
+          <button className="btn btn-dark" style={{ opacity: dirty ? 1 : 0.45 }} disabled={!dirty}
+            onClick={() => { setInviteCode(code); setDirty(false); toast('가입 코드가 저장되었습니다'); }}>SAVE</button>
+        </div>
+      </div>
+
+      <h4 style={{ fontSize: 12.5, margin: '22px 0 4px' }}>가입한 회원 ({members.length}명)</h4>
+      {members.map(m => (
+        <div className="set-row" key={m.id}>
+          <div className="l">{m.nickname}<small>{m.id}</small></div>
+          {m.role === 'admin' && <span className="pill">관리자</span>}
+        </div>
+      ))}
+      {members.length === 0 && <p className="hint">가입한 회원이 없습니다</p>}
+      <p className="hint">회원 등급 변경 기능은 아직 없습니다 — 필요하시면 다음에 추가해 드릴게요</p>
+    </div>
+  );
+}
+
+/** 데이터 백업 탭 — 내보내기·가져오기·선택 초기화.
+ *  서버(Supabase/Firebase) 연결 설정 UI는 일부러 넣지 않았다 — 잘못 만들면 실제 DB 연결이
+ *  끊기거나 꼬일 수 있어 위험도가 다르다. 필요하면 git 히스토리에서 복원하거나 따로 요청. */
+function BackupPane() {
+  const toast = useToast();
+  const [includeMembers, setIncludeMembers] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [resetSel, setResetSel] = useState<string[]>([]);
+  const [resetAsk, setResetAsk] = useState(false);
+  const fileRef = useRef<HTMLInputElement | null>(null);
+
+  const doExport = async () => {
+    setBusy(true);
+    try {
+      const { blob, dataCount, blobCount } = await exportBackup(includeMembers);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = `ohome-backup-${new Date().toISOString().slice(0, 10)}.zip`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast(`백업 완료 — 데이터 ${dataCount}건, 파일 ${blobCount}개`);
+    } catch { toast('백업에 실패했습니다'); }
+    setBusy(false);
+  };
+
+  const doImport = async (f: File) => {
+    setBusy(true);
+    try {
+      const { dataCount, blobCount, hasMembers } = await importBackup(f);
+      toast(`복원 완료 — 데이터 ${dataCount}건, 파일 ${blobCount}개${hasMembers ? ' (회원 정보 포함)' : ''}`);
+    } catch { toast('복원에 실패했습니다 — 백업 파일이 맞는지 확인해 주세요'); }
+    setBusy(false);
+  };
+
+  const toggleReset = (key: string) => setResetSel(s => (s.includes(key) ? s.filter(k => k !== key) : [...s, key]));
+
+  const doReset = async () => {
+    setBusy(true);
+    try {
+      const r = await resetGroups(resetSel);
+      toast(`초기화 완료 — ${r.rows}건 삭제, 파일 ${r.files}개${r.failed.length ? ` (실패 ${r.failed.length}건)` : ''}`);
+      setResetSel([]);
+    } catch { toast('초기화에 실패했습니다'); }
+    setBusy(false);
+    setResetAsk(false);
+  };
+
+  return (
+    <div className="set-sec">
+      <h3>데이터 백업</h3>
+      <div className="d">전체 데이터를 파일로 내려받거나 복원 — 서버(Supabase 등) 연결 설정은 이 화면에 아직 없습니다, 필요하시면 말씀해 주세요</div>
+
+      <h4 style={{ fontSize: 12.5, margin: '18px 0 4px' }}>내보내기</h4>
+      <div className="set-row">
+        <div className="l"><b>회원 정보 포함</b><small>계정 정보까지 백업에 담을지</small></div>
+        <KToggle checked={includeMembers} onChange={setIncludeMembers} />
+      </div>
+      <button className="btn btn-dark" disabled={busy} onClick={doExport} style={{ marginTop: 8 }}>백업 파일 내려받기</button>
+
+      <h4 style={{ fontSize: 12.5, margin: '26px 0 4px' }}>가져오기</h4>
+      <div className="d" style={{ marginBottom: 8 }}>백업 파일(zip)을 선택하면 지금 데이터에 이어 붙습니다</div>
+      <input ref={fileRef} type="file" accept=".zip" style={{ display: 'none' }}
+        onChange={e => { const f = e.target.files?.[0]; if (f) doImport(f); if (fileRef.current) fileRef.current.value = ''; }} />
+      <button className="btn btn-ghost" disabled={busy} onClick={() => fileRef.current?.click()}>백업 파일 선택</button>
+
+      <h4 style={{ fontSize: 12.5, margin: '26px 0 4px' }}>초기화</h4>
+      <div className="d" style={{ marginBottom: 8 }}>선택한 항목만 지웁니다 — 되돌릴 수 없으니 먼저 백업을 권장합니다</div>
+      {[...RESET_CONTENT, ...RESET_EXTRA].map(g => (
+        <KCheck key={g.key} label={g.label} checked={resetSel.includes(g.key)} onChange={() => toggleReset(g.key)} />
+      ))}
+      <button className="btn btn-ghost" disabled={busy || resetSel.length === 0} onClick={() => setResetAsk(true)} style={{ marginTop: 10 }}>선택 항목 초기화</button>
+
+      <ConfirmModal open={resetAsk} title="정말 초기화할까요?"
+        body={`선택한 ${resetSel.length}개 항목의 데이터가 삭제됩니다 — 되돌릴 수 없습니다.`}
+        onClose={() => setResetAsk(false)}
+        buttons={[
+          { label: 'RESET', kind: 'accent', onClick: doReset },
+          { label: 'CANCEL', kind: 'ghost', onClick: () => setResetAsk(false) },
+        ]} />
+    </div>
+  );
+}
+
 /* ---------- 카테고리 → 화면 매핑 ----------
- * 지금 실제로 구현된 건 5개 (디자인 / 메인 페이지 / 위젯 / 메뉴 관리 / 게시판 관리).
- * 나머지 카테고리는 이전 커밋 어딘가에 있던 구현이 빠져 있는 상태 — 저장소 히스토리에서
- * 복원 전까지는 "준비 중" 안내만 표시한다 (없는 걸 있는 척하지 않기 위해). */
+ * 데이터 백업의 "서버 연결 설정"만 빼고 15개 전부 채워 넣었다 — 서버(Supabase/Firebase) 연결
+ * 구성은 잘못 만들면 실제 DB 연결이 끊기거나 꼬일 수 있어 위험도가 달라서, 확인 없이 새로 만들지
+ * 않고 비워 둔다. 필요하면 git 히스토리에서 예전 버전을 복원하거나 별도로 요청. */
 const CAT_PANE: Partial<Record<typeof CATEGORIES[number], () => React.ReactElement>> = {
   '디자인': DesignPane,
   '메인 페이지': MainPagePane,
   '위젯': WidgetsPane,
   '메뉴 관리': MenuPane,
   '게시판 관리': BoardPane,
+  '자관 질문': RelqPane,
+  '커미션': CommPane,
+  'TRPG': TrpgPane,
+  '감상타래': ThreadPane,
+  '메모장': MemoPane,
+  '폰트': FontPane,
+  '마우스 커서': CursorPane,
+  'BGM': BgmPane,
+  '무드 리스트': MoodPane,
+  '회원/보안': MembersPane,
+  '데이터 백업': BackupPane,
 };
 
 function SettingsInner() {
