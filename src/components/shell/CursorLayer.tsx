@@ -95,9 +95,11 @@ export function CursorLayer() {
           const rule = RULES[a.key];
           const u = a.urls[stepIdx[a.key] ?? 0];
           const vn = VAR_NAME[a.key];
+          const entry = st.states[a.key];
+          const hs = entry ? ` ${entry.hx} ${entry.hy}` : '';
           return [
-            `${rule.sel}{cursor:url("${u}"), ${rule.fallback} !important}`,
-            ...(vn ? [`:root{${vn}:url("${u}"), ${rule.fallback}}`] : []),
+            `${rule.sel}{cursor:url("${u}")${hs}, ${rule.fallback} !important}`,
+            ...(vn ? [`:root{${vn}:url("${u}")${hs}, ${rule.fallback}}`] : []),
           ];
         });
         styleEl!.textContent = [...staticParts, ...animParts].join('\n');
