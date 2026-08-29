@@ -137,6 +137,70 @@ function FontRoleRow({ role }: { role: FontRole }) {
   );
 }
 
+/** 브라우저 탭 제목 (v1.9 사용자 요청) — 비우면 「로고 텍스트 — 개인홈」. DocTitle.tsx가 실제로 적용 */
+function DocTitleControl() {
+  const { site, set } = useSiteDraft();
+  return (
+    <LiveInput value={site.docTitle ?? ''} onValue={v => set({ docTitle: v || undefined })}
+      placeholder={`${site.title} — 개인홈`} style={{ width: 220 }} />
+  );
+}
+
+/** 브라우저 탭 아이콘 (v2.0 사용자 요청) — DocIcon.tsx가 site.favicon(putBlob 참조)을 실제로 적용 */
+function FaviconControl() {
+  const { site, set } = useSiteDraft();
+  const url = useBlobUrl(site.favicon);
+  return (
+    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+      {url && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={url} alt="" style={{ width: 28, height: 28, borderRadius: 6, border: '1px solid var(--line)', objectFit: 'cover' }} />
+      )}
+      <input id="siteFaviconFile" type="file" accept="image/png,image/x-icon,image/svg+xml" style={{ display: 'none' }}
+        onChange={async e => {
+          const f = e.target.files?.[0];
+          if (f) set({ favicon: await putBlob(f) });
+          e.target.value = '';
+        }} />
+      <button className="btn btn-ghost" style={{ height: 35, padding: '0 14px', fontSize: 11 }}
+        onClick={() => document.getElementById('siteFaviconFile')?.click()}>
+        {site.favicon ? 'CHANGE' : 'UPLOAD'}
+      </button>
+      {site.favicon && (
+        <button className="btn btn-ghost" style={{ height: 35, padding: '0 14px', fontSize: 11 }}
+          onClick={() => set({ favicon: undefined })}>REMOVE</button>
+      )}
+    </div>
+  );
+}
+
+/** 크롤링 설명 문구 (v2.0 사용자 요청) — 비우면 서브타이틀, 그것도 비었으면 기본 문구 (generateMetadata) */
+function CrawlDescControl() {
+  const { site, set } = useSiteDraft();
+  return (
+    <LiveInput value={site.crawlDesc ?? ''} onValue={v => set({ crawlDesc: v || undefined })}
+      placeholder={site.subtitle || '기본 문구 사용'} style={{ width: 260 }} />
+  );
+}
+
+/** 로고 텍스트 · 서브타이틀 · 서브타이틀 정렬 (5.2) — TopBar.tsx가 실제로 적용 */
+function LogoControls() {
+  const { site, set } = useSiteDraft();
+  return (
+    <>
+      <LiveInput value={site.title} onValue={v => set({ title: v })} placeholder="로고 텍스트" style={{ width: 140 }} />
+      <LiveInput value={site.subtitle} onValue={v => set({ subtitle: v })} placeholder="서브타이틀" style={{ width: 160 }} />
+      <div className="mini-seg">
+        {(['left', 'center', 'right'] as const).map(a => (
+          <button key={a} className={site.align === a ? 'on' : ''} onClick={() => set({ align: a })}>
+            {a === 'left' ? '왼쪽' : a === 'center' ? '가운데' : '오른쪽'}
+          </button>
+        ))}
+      </div>
+    </>
+  );
+}
+
 function DesignPane() {
   const {
     state, dirty: themeDirty, setMode, setPointAccent, setPointTone, setVar,

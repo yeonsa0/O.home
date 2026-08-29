@@ -480,7 +480,6 @@ export function DecoWidget({ conf }: { conf: WidgetConf }) {
   };
   return (
     <div className="deco-wgt"
-      data-tip={cur?.tooltip}
       style={{
         position: 'relative', width: '100%', height: '100%', minHeight: 80, overflow: 'hidden',
         aspectRatio: conf.h == null ? '1/1' : undefined, // 크기 동결 전 기본 정사각
