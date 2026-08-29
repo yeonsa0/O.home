@@ -30,19 +30,14 @@ const RULES: Record<CursorState, { sel: string; fallback: string }> = {
   },
   text: { sel: 'input, textarea, [contenteditable="true"], .re-content', fallback: 'text' },
   active: { sel: 'body:active, *:active', fallback: 'auto' },
-  // .wgt는 편집모드에서만 드래그 가능 — 평상시 배너 등 위젯 위에서 grab이 뜨던 문제 수정 (v1.9)
-  // 편집모드에선 메인 영역 전체 grab 통일 — 드래그 중 내부 요소를 지나며 커서가 튀지 않게
-  // 편집 핸들(.rs 크기조절 · .rr 기울기)은 제외 — 전체 grab 규칙(!important)이 핸들 커서를 덮어
-  // 시스템 커서와 커스텀 커서가 섞여 깨져 보이던 문제 (v1.9 사용자 발견)
   grab: { sel: '.drag-h, .postit:not(.ro), [draggable="true"], body.edit-on .page-main-wrap, body.edit-on .page-main-wrap *:not(.rs):not(.rr)', fallback: 'grab' },
-  // 크기조절 4방향 (v1.9 사용자 요청) — nwse는 위젯 우하단 핸들, 나머지는 예약 클래스(향후 사용처)
   rsNwse: { sel: '.wgt .rs, .cur-rs-nwse', fallback: 'nwse-resize' },
   rsNesw: { sel: '.cur-rs-nesw', fallback: 'nesw-resize' },
   rsEw: { sel: '.cur-rs-ew', fallback: 'ew-resize' },
   rsNs: { sel: '.cur-rs-ns', fallback: 'ns-resize' },
 };
 
-interface AnimState { key: CursorState; urls: string[]; delays: number[] }
+interface AnimState { key: CursorState; urls: string[]; delays: number[]; hs: string }
 
 export function CursorLayer() {
   const [st] = useCursorSettings();
@@ -67,17 +62,23 @@ export function CursorLayer() {
         if (!blob || cancelled) continue;
         const buf = await blob.arrayBuffer();
         if (cancelled) return;
+        
+        // 공통 핫스팟 계산 (.cur 파일이거나 ani 내부 설정에 따라 처리)
+        const hs = isCur(buf) ? '' : ` ${entry.hx} ${entry.hy}`;
         const ani = parseAni(buf);
+
         if (ani) {
-          // 스텝 순서대로 프레임 URL 배열 — 타이머가 이 순서로 커서를 교체
           const frameUrls = ani.frames.map(f => { const u = URL.createObjectURL(f); urls.push(u); return u; });
-          anims.push({ key, urls: ani.steps.map(i => frameUrls[i]), delays: ani.delays });
+          anims.push({ 
+            key, 
+            urls: ani.steps.map(i => frameUrls[i]), 
+            delays: ani.delays,
+            hs 
+          });
         } else {
           const url = URL.createObjectURL(blob);
           urls.push(url);
           const rule = RULES[key];
-          // .cur는 내장 핫스팟 사용 — CSS 좌표를 붙이면 무시되는 브라우저가 있어 생략
-          const hs = isCur(buf) ? '' : ` ${entry.hx} ${entry.hy}`;
           staticParts.push(`${rule.sel}{cursor:url("${url}")${hs}, ${rule.fallback} !important}`);
           const vn = VAR_NAME[key];
           if (vn) staticParts.push(`:root{${vn}:url("${url}")${hs}, ${rule.fallback}}`);
@@ -96,8 +97,8 @@ export function CursorLayer() {
           const u = a.urls[stepIdx[a.key] ?? 0];
           const vn = VAR_NAME[a.key];
           return [
-            `${rule.sel}{cursor:url("${u}"), ${rule.fallback} !important}`,
-            ...(vn ? [`:root{${vn}:url("${u}"), ${rule.fallback}}`] : []),
+            `${rule.sel}{cursor:url("${u}")${a.hs}, ${rule.fallback} !important}`,
+            ...(vn ? [`:root{${vn}:url("${u}")${a.hs}, ${rule.fallback}}`] : []),
           ];
         });
         styleEl!.textContent = [...staticParts, ...animParts].join('\n');
