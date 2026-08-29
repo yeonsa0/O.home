@@ -92,7 +92,7 @@ function BoardInner() {
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <SearchBar onSearch={v => { setQ(v); setPage(1); }} />
-          {allow(board.permWrite) && !!user && (
+          {allow(board.permWrite) && (
             <button className="btn btn-dark" onClick={() => router.push(`/board/write?b=${board.id}`)}>
               {board.skin === 'paint' ? '🖌 새 그림 그리기' : '✎ WRITE'}
             </button>
