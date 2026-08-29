@@ -10,8 +10,16 @@ import { renderBody } from '@/lib/sanitize';
 import { KInput, KTextarea, KSelect, KCheck } from '@/components/ui/Kit';
 import { CropEditor, CropImg, CropValue } from '@/components/ui/CropEditor';
 import { RichEditor } from '@/components/ui/RichEditor';
+import { PaintCanvas, PaintCanvasHandle } from '@/components/paint/PaintCanvas';
+import { putBlob } from '@/lib/blobStore';
 import { useToast } from '@/components/ui/Toast';
 import { PageTitle, EditableDesc } from '@/components/ui/PageText';
+
+/** 본문에서 첫 이미지 추출 (그림판 이어그리기/수정 시 기존 그림 불러오기용) */
+function firstImage(body: string): string | undefined {
+  const html = /<img[^>]*src=["']([^"']+)["']/i.exec(body);
+  return html ? html[1] : undefined;
+}
 
 function WriteInner() {
   const router = useRouter();
@@ -19,11 +27,17 @@ function WriteInner() {
   const toast = useToast();
   const params = useSearchParams();
   const editPid = params.get('edit');
+  const originId = params.get('origin'); // 그림판 이어그리기 — 원본 글 id
   const [posts, setPosts, postsLoaded] = useLocalList<Post>('ohome.board.v1', BOARD_SEED);
   const editing = editPid ? posts.find(p => p.id === editPid) : undefined;
   const bid = editing?.boardId ?? params.get('b') ?? MAIN_BOARD_ID;
   const { boards } = useBoards();
   const board = boards.find(b => b.id === bid) ?? boards[0];
+  const isPaint = board.skin === 'paint';
+  const originPost = originId ? posts.find(p => p.id === originId) : undefined;
+  const canvasRef = useRef<PaintCanvasHandle | null>(null);
+  // 그림판 캔버스에 처음 얹을 이미지 — 수정 중이면 기존 그림, 이어그리기면 원본 글 그림
+  const paintBaseImage = editing ? firstImage(editing.body) : (originPost ? firstImage(originPost.body) : undefined);
   const [title, setTitle] = useState('');
   const [writeMode, setWriteMode] = useState<'editor' | 'md' | 'html'>('editor'); // 에디터가 기본
   const [body, setBody] = useState('');
@@ -79,16 +93,27 @@ function WriteInner() {
     );
   }
 
-  const post = () => {
-    if (!title.trim() || !body.trim()) { toast('제목과 내용을 입력해 주세요'); return; }
+  const post = async () => {
+    if (!title.trim()) { toast('제목을 입력해 주세요'); return; }
+    let finalBody = body;
+    if (isPaint) {
+      const hasDrawing = canvasRef.current?.hasDrawing();
+      if (!editing && !paintBaseImage && !hasDrawing) { toast('그림을 그려 주세요'); return; }
+      const blob = await canvasRef.current?.exportBlob();
+      if (!blob) { toast('그림을 저장하지 못했습니다 — 브라우저를 새로고침한 뒤 다시 시도해 주세요'); return; }
+      const ref = await putBlob(blob);
+      finalBody = `<img src="${ref}" alt="${title.trim()}">`;
+    } else if (!body.trim()) {
+      toast('제목과 내용을 입력해 주세요'); return;
+    }
     if (editing) {
       // 수정 — 작성자 본인만 (관리자도 타인 글은 삭제만, v1.9). 작성자/날짜/댓글/소속 게시판은 유지
       if (editing.authorId !== user.id) { toast('수정은 작성자 본인만 할 수 있습니다'); return; }
       setPosts(posts.map(p => (p.id === editing.id ? {
         ...p,
-        title: title.trim(), body,
-        mode: writeMode === 'md' ? 'md' : 'html',
-        authored: writeMode === 'editor' ? 'editor' : undefined,
+        title: title.trim(), body: finalBody,
+        mode: isPaint ? 'html' : (writeMode === 'md' ? 'md' : 'html'),
+        authored: isPaint ? undefined : (writeMode === 'editor' ? 'editor' : undefined),
         category,
         secret, notice: isAdmin ? notice : p.notice,
         fold: foldType === 'none' ? null : { type: foldType, label: foldType === 'custom' ? foldLabel : undefined },
@@ -99,14 +124,15 @@ function WriteInner() {
       return;
     }
     const p: Post = {
-      id: newId(), title: title.trim(), body,
-      mode: writeMode === 'md' ? 'md' : 'html', category,
+      id: newId(), title: title.trim(), body: finalBody,
+      mode: isPaint ? 'html' : (writeMode === 'md' ? 'md' : 'html'), category,
       author: user.nickname, authorId: user.id, date: new Date().toISOString(),
       secret, notice: isAdmin && notice,
       fold: foldType === 'none' ? null : { type: foldType, label: foldType === 'custom' ? foldLabel : undefined },
       comments: [],
       boardId: board.id,   // 소속 게시판 (5.2 다중 게시판)
       thumbSrc, thumbCrop,
+      originId: isPaint ? (originId ?? undefined) : undefined,
     };
     setPosts([p, ...posts]);
     toast('등록되었습니다');
@@ -115,7 +141,10 @@ function WriteInner() {
 
   return (
     <section className="page">
-      <div className="page-head"><PageTitle>{editing ? 'EDIT' : 'WRITE'}</PageTitle><EditableDesc k="board-write-desc" def="에디터 / Markdown / HTML — 스크립트는 저장 시 자동 제거" /></div>
+      <div className="page-head">
+        <PageTitle>{isPaint ? (editing ? '그림 수정' : originId ? '이어그리기' : '새 그림 그리기') : (editing ? 'EDIT' : 'WRITE')}</PageTitle>
+        <EditableDesc k="board-write-desc" def="에디터 / Markdown / HTML — 스크립트는 저장 시 자동 제거" />
+      </div>
       <div className="write-grid">
         {/* 좌: 본문 */}
         <div className="panel" style={{ padding: 24 }}>
@@ -123,27 +152,33 @@ function WriteInner() {
             <label className="k-label" style={{ width: 60 }}>제목</label>
             <KInput value={title} onChange={e => setTitle(e.target.value)} style={{ flex: 1 }} />
           </div>
-          <div className="form-row">
-            <label className="k-label" style={{ width: 60 }}>모드</label>
-            <div className="mini-seg">
-              <button className={writeMode === 'editor' ? 'on' : ''} onClick={() => setWriteMode('editor')}>에디터</button>
-              <button className={writeMode === 'md' ? 'on' : ''} onClick={() => setWriteMode('md')}>Markdown</button>
-              <button className={writeMode === 'html' ? 'on' : ''} onClick={() => setWriteMode('html')}>HTML</button>
-            </div>
-          </div>
-          {writeMode === 'editor' ? (
-            <RichEditor value={body} onChange={setBody} placeholder='내용을 작성하세요 — 이미지 삽입 가능 (스크립트 불허 6.3)' />
+          {isPaint ? (
+            <PaintCanvas ref={canvasRef} initialImageUrl={paintBaseImage} lockSize={!!paintBaseImage} />
           ) : (
             <>
-              <KTextarea
-                style={{ minHeight: 220, fontFamily: writeMode === 'html' ? 'ui-monospace, Consolas, monospace' : undefined }}
-                placeholder={writeMode === 'md' ? '마크다운으로 작성...' : '<div>HTML 코드를 작성/붙여넣기...</div>'}
-                value={body} onChange={e => setBody(e.target.value)}
-              />
-              <div className="preview-box" style={{ marginTop: 14 }}>
-                <div className="pv-label">PREVIEW — 실시간 미리보기</div>
-                <div className="post-body" dangerouslySetInnerHTML={{ __html: preview }} />
+              <div className="form-row">
+                <label className="k-label" style={{ width: 60 }}>모드</label>
+                <div className="mini-seg">
+                  <button className={writeMode === 'editor' ? 'on' : ''} onClick={() => setWriteMode('editor')}>에디터</button>
+                  <button className={writeMode === 'md' ? 'on' : ''} onClick={() => setWriteMode('md')}>Markdown</button>
+                  <button className={writeMode === 'html' ? 'on' : ''} onClick={() => setWriteMode('html')}>HTML</button>
+                </div>
               </div>
+              {writeMode === 'editor' ? (
+                <RichEditor value={body} onChange={setBody} placeholder='내용을 작성하세요 — 이미지 삽입 가능 (스크립트 불허 6.3)' />
+              ) : (
+                <>
+                  <KTextarea
+                    style={{ minHeight: 220, fontFamily: writeMode === 'html' ? 'ui-monospace, Consolas, monospace' : undefined }}
+                    placeholder={writeMode === 'md' ? '마크다운으로 작성...' : '<div>HTML 코드를 작성/붙여넣기...</div>'}
+                    value={body} onChange={e => setBody(e.target.value)}
+                  />
+                  <div className="preview-box" style={{ marginTop: 14 }}>
+                    <div className="pv-label">PREVIEW — 실시간 미리보기</div>
+                    <div className="post-body" dangerouslySetInnerHTML={{ __html: preview }} />
+                  </div>
+                </>
+              )}
             </>
           )}
           {/* 티켓 스킨 대표 이미지 — 본문에 삽입한 이미지 리스트에서 선택, 클릭 시 16:9 썸네일 위치 지정 (v1.9) */}

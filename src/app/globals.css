@@ -1773,3 +1773,27 @@ body.edit-on .main-grid.gridlines .wgt{outline-offset:0}
   top: unset !important;
   transform: unset !important;
 }
+
+/* ── 그림판(오에카키) 게시판 — PaintCanvas ─────────────────── */
+.paint-wrap{display:flex;flex-direction:column;gap:12px}
+.paint-toolbar{display:flex;flex-wrap:wrap;align-items:flex-end;gap:16px;padding:12px 14px;background:var(--panel);border-radius:var(--radius);box-shadow:var(--sh-md)}
+.paint-field{display:flex;flex-direction:column;gap:5px}
+.paint-field label{font-size:calc(10.5px*var(--fs,1));color:var(--sub);letter-spacing:.03em}
+.paint-color{width:34px;height:26px;padding:0;border:1px solid var(--line);border-radius:6px;background:none;cursor:var(--cur-pointer,pointer)}
+.paint-swatches{display:flex;gap:5px;margin-top:4px;flex-wrap:wrap;max-width:180px}
+.paint-swatch{width:16px;height:16px;border-radius:50%;border:1px solid var(--line);cursor:var(--cur-pointer,pointer);padding:0}
+.paint-swatch.on{outline:2px solid var(--accent);outline-offset:2px}
+.paint-notice{padding:8px 12px;border-radius:8px;background:#eef3fb;color:#3c5c8a;font-size:calc(11.5px*var(--fs,1))}
+.paint-notice.warn{background:#fff3cd;color:#856404}
+.paint-stage{position:relative;border-radius:10px;overflow:hidden;box-shadow:var(--sh-md);background:#fff;max-width:100%}
+.paint-stage canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+.paint-loading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.7);font-size:calc(12px*var(--fs,1));color:var(--sub)}
+
+/* 그림판 게시판 목록 — 이미지 카드 그리드 */
+.paint-feed{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:14px}
+.paint-card{background:var(--panel);border-radius:var(--radius);box-shadow:var(--sh-md);overflow:hidden;cursor:var(--cur-pointer,pointer);display:flex;flex-direction:column}
+.paint-card-img{aspect-ratio:1/1;background:#f2f3f5;display:flex;align-items:center;justify-content:center;overflow:hidden}
+.paint-card-img img{width:100%;height:100%;object-fit:contain;image-rendering:auto}
+.paint-card-body{padding:10px 12px}
+.paint-card-title{font-size:calc(12px*var(--fs,1));font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.paint-card-meta{font-size:calc(10.5px*var(--fs,1));color:var(--faint);margin-top:3px;display:flex;justify-content:space-between;gap:6px}

@@ -138,6 +138,10 @@ export default function BoardDetailPage() {
         <PageTitle href={boardHref(board.id)}>{boardTitle}</PageTitle>
         <p>{post.notice ? '공지 · ' : `${post.category} · `}{post.author} · {fmtDate(post.date)}</p>
         <div className="head-actions">
+          {/* 그림판 — 이 그림 위에 이어서 그리기 (누구나 글쓰기 권한만 있으면) */}
+          {board.skin === 'paint' && allow(board.permWrite) && !!user && (
+            <button className="btn btn-dark" onClick={() => router.push(`/board/write?b=${board.id}&origin=${post.id}`)}>🖌 이어그리기</button>
+          )}
           {/* 수정은 작성자 본인만 — 관리자도 타인 글은 삭제만 (v1.9) */}
           {isAuthor && (
             <button className="btn btn-dark" onClick={() => router.push(`/board/write?edit=${post.id}`)}>EDIT</button>

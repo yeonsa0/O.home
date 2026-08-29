@@ -93,12 +93,44 @@ function BoardInner() {
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <SearchBar onSearch={v => { setQ(v); setPage(1); }} />
           {allow(board.permWrite) && !!user && (
-            <button className="btn btn-dark" onClick={() => router.push(`/board/write?b=${board.id}`)}>✎ WRITE</button>
+            <button className="btn btn-dark" onClick={() => router.push(`/board/write?b=${board.id}`)}>
+              {board.skin === 'paint' ? '🖌 새 그림 그리기' : '✎ WRITE'}
+            </button>
           )}
         </div>
       </div>
 
-      {board.skin === 'ticket' ? (
+      {board.skin === 'paint' ? (
+        /* 그림판 스킨 — 이미지 카드 그리드 피드 (paint.zip 원본의 세로 피드를 카드 그리드로) */
+        <div className="paint-feed">
+          {pageList.map(p => {
+            const img = canRead(p) ? firstImage(p.body) : null;
+            return (
+              <div className="paint-card" key={p.id} onClick={() => { if (canRead(p)) router.push(`/board/${p.id}`); }}>
+                <div className="paint-card-img">
+                  {img
+                    ? <img src={img} alt={p.title} loading="lazy" />
+                    : <span style={{ fontSize: 20 }}>{canRead(p) ? '🖼' : '🔒'}</span>}
+                </div>
+                <div className="paint-card-body">
+                  <div className="paint-card-title">
+                    {canRead(p) ? <>{p.secret && '🔒 '}{p.title}</> : '🔒 비밀글입니다'}
+                  </div>
+                  <div className="paint-card-meta">
+                    <span>{p.author}</span>
+                    <span>{cmtCount(p) > 0 ? `💬 ${cmtCount(p)}` : fmtDate(p.date)}</span>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+          {pageList.length === 0 && (
+            <div className="panel" style={{ padding: 36, textAlign: 'center', fontSize: 12.5, color: 'var(--faint)', gridColumn: '1/-1' }}>
+              아직 그림이 없어요 — [🖌 새 그림 그리기] 로 첫 그림을 남겨보세요!
+            </div>
+          )}
+        </div>
+      ) : board.skin === 'ticket' ? (
         /* 티켓형 스킨 (5.2 v1.9) — 왼쪽 썸네일(본문 첫 이미지) + 절취선 + 오른쪽 글 정보 */
         <div style={board.fg ? { color: board.fg } : undefined}>
           {pageList.map(p => {
