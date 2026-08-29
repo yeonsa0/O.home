@@ -842,10 +842,17 @@ function MenuPane() {
   const tree = ms.tree ?? defaultTree();
   const extra = [...boardEntries(boards), ...sectionMenuEntries(secMap), ...linkEntries(links)];
   const placedHrefs = new Set(tree.flatMap(g => (g.href ? [g.href] : g.items.map(it => it.href))));
-  const unplaced = [
-    ...FEATURES.filter(f => !placedHrefs.has(f.href)).map(f => ({ href: f.href, name: f.label })),
-    ...extra.filter(e => !placedHrefs.has(e.href)),
-  ];
+  // href 기준으로 한 번씩만 — FEATURES/게시판/섹션이 같은 href를 가리키는 경우가 있어서 중복 방지
+  const unplaced = Array.from(
+    new Map(
+      [
+        ...FEATURES.map(f => ({ href: f.href, name: f.label })),
+        ...extra,
+      ]
+        .filter(u => !placedHrefs.has(u.href))
+        .map(u => [u.href, u] as const),
+    ).values(),
+  );
 
   const setTree = (next: MenuGroupNode[]) => patchMenu({ tree: next });
   const addGroup = () => setTree([...tree, { id: newGroupId(), label: '새 그룹', items: [] }]);
@@ -929,7 +936,7 @@ function MenuPane() {
       <div className="d" style={{ marginBottom: 8 }}>그룹을 골라 추가하면 상단 메뉴에 나타납니다 (그림판 게시판도 여기서 추가)</div>
       {unplaced.map(u => (
         <div className="set-row" key={u.href}>
-          <div className="l">{u.name}<small>{u.href}</small></div>
+          <div className="l"><b>{u.name}</b><small>{u.href}</small></div>
           <KSelect minWidth={150} value="" onChange={gid => { if (gid) addItemTo(gid, u.href); }}
             options={[{ value: '', label: '그룹 선택' }, ...tree.filter(g => !g.href).map(g => ({ value: g.id, label: g.label }))]} />
         </div>

@@ -14,7 +14,6 @@ export const FEATURES: { href: string; label: string }[] = [
   { href: '/rels', label: '자관' },
   { href: '/rp', label: '역극' },
   { href: '/board', label: '리스트' },
-  { href: '/board?b=paint', label: '그림판' },
   { href: '/gallery', label: '갤러리' },
   { href: '/loadb', label: '로드비' },
   { href: '/tchars', label: '캐릭터' },   // TRPG 캐릭터 — 자놀 캐릭터와는 href로 구분

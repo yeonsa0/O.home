@@ -16,7 +16,7 @@ export interface PaintCanvasHandle {
   hasDrawing: () => boolean;
 }
 
-type Tool = 'pen' | 'eraser' | 'line' | 'rect' | 'ellipse';
+type Tool = 'pen' | 'pixel' | 'eraser' | 'line' | 'rect' | 'ellipse';
 
 interface CanvasSize { w: number; h: number; label: string }
 
@@ -34,7 +34,7 @@ const SWATCHES = [
 const MAX_HISTORY = 30;
 
 const TOOL_LABEL: Record<Tool, string> = {
-  pen: '펜', eraser: '지우개', line: '직선', rect: '사각형', ellipse: '원',
+  pen: '펜', pixel: '픽셀', eraser: '지우개', line: '직선', rect: '사각형', ellipse: '원',
 };
 
 /** 포인터 이벤트 좌표 → 캔버스 픽셀 좌표 (표시 크기와 실제 픽셀 크기가 달라도 정확히) */
@@ -181,6 +181,28 @@ export const PaintCanvas = forwardRef<PaintCanvasHandle, {
     c.restore();
   };
 
+  /** 픽셀 툴 — 원본(paint.zip canvas.js)의 pixel 모드: 안티앨리어싱 없는 각진 정사각형 스탬프 */
+  const drawPixelStamp = (p: { x: number; y: number }) => {
+    const c = ctx(); if (!c) return;
+    const s = Math.max(1, Math.round(lineWidth));
+    c.save();
+    c.imageSmoothingEnabled = false;
+    c.globalAlpha = alpha / 100;
+    c.globalCompositeOperation = 'source-over';
+    c.fillStyle = color;
+    c.fillRect(Math.floor(p.x - s / 2), Math.floor(p.y - s / 2), s, s);
+    c.restore();
+  };
+
+  const drawPixelSegment = (from: { x: number; y: number }, to: { x: number; y: number }) => {
+    const dist = Math.hypot(to.x - from.x, to.y - from.y);
+    const steps = Math.max(1, Math.ceil(dist));
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps;
+      drawPixelStamp({ x: from.x + (to.x - from.x) * t, y: from.y + (to.y - from.y) * t });
+    }
+  };
+
   const previewShape = (start: { x: number; y: number }, end: { x: number; y: number }) => {
     const oc = octx(); const ov = overlayRef.current;
     if (!oc || !ov) return;
@@ -231,10 +253,10 @@ export const PaintCanvas = forwardRef<PaintCanvasHandle, {
     const p = toCanvasPoint(cvs, e);
     pushHistory();
     setDirty(true);
-    if (tool === 'pen' || tool === 'eraser') {
+    if (tool === 'pen' || tool === 'eraser' || tool === 'pixel') {
       drawing.current = true;
       lastPt.current = p;
-      drawDot(p);
+      if (tool === 'pixel') drawPixelStamp(p); else drawDot(p);
     } else {
       shapeStart.current = p;
       drawing.current = true;
@@ -245,8 +267,10 @@ export const PaintCanvas = forwardRef<PaintCanvasHandle, {
     if (!drawing.current || loading) return;
     const cvs = mainRef.current; if (!cvs) return;
     const p = toCanvasPoint(cvs, e);
-    if (tool === 'pen' || tool === 'eraser') {
-      if (lastPt.current) drawSegment(lastPt.current, p);
+    if (tool === 'pen' || tool === 'eraser' || tool === 'pixel') {
+      if (lastPt.current) {
+        if (tool === 'pixel') drawPixelSegment(lastPt.current, p); else drawSegment(lastPt.current, p);
+      }
       lastPt.current = p;
     } else if (shapeStart.current) {
       previewShape(shapeStart.current, p);
@@ -298,7 +322,7 @@ export const PaintCanvas = forwardRef<PaintCanvasHandle, {
     <div className="paint-wrap">
       <div className="paint-toolbar">
         <div className="mini-seg">
-          {(['pen', 'eraser', 'line', 'rect', 'ellipse'] as Tool[]).map(t => (
+          {(['pen', 'pixel', 'eraser', 'line', 'rect', 'ellipse'] as Tool[]).map(t => (
             <button key={t} type="button" className={tool === t ? 'on' : ''} onClick={() => setTool(t)}>
               {TOOL_LABEL[t]}
             </button>

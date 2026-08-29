@@ -159,8 +159,11 @@ export const DEFAULT_BOARDS: Board[] = [{
 }, PAINT_BOARD];
 
 /** 그림판이 빠진 저장값에도 항상 붙여 준다 (기존 사이트가 코드만 업데이트해도 바로 보이도록) */
-const withPaintBoard = (list: Board[]): Board[] =>
-  (list.some(b => b.id === PAINT_BOARD_ID) ? list : [...list, PAINT_BOARD]);
+// id가 겹치는 항목이 저장돼 있을 수 있어 방어적으로 한 번 정리한 뒤, 그림판이 없으면 붙인다
+const withPaintBoard = (list: Board[]): Board[] => {
+  const deduped = Array.from(new Map(list.map(b => [b.id, b])).values());
+  return deduped.some(b => b.id === PAINT_BOARD_ID) ? deduped : [...deduped, PAINT_BOARD];
+};
 
 export function useBoards(): {
   boards: Board[]; setBoards: (next: Board[]) => void; loaded: boolean;
