@@ -23,6 +23,11 @@ export default function GuestbookPage() {
   const [replyText, setReplyText] = useState('');
   const [delFor, setDelFor] = useState<string | null>(null);
   const [delPw, setDelPw] = useState('');
+  
+  // 비밀글 해제(열람)를 위한 상태
+  const [unlockedIds, setUnlockedIds] = useState<string[]>([]);
+  const [readPwFor, setReadPwFor] = useState<string | null>(null);
+  const [readPw, setReadPw] = useState('');
 
   const leave = () => {
     if (!body.trim()) { toast('내용을 입력해 주세요'); return; }
@@ -47,7 +52,7 @@ export default function GuestbookPage() {
     }
   };
 
-  const canRead = (e: GuestEntry) => !e.secret || isAdmin || (e.authorId && e.authorId === user?.id);
+  const canRead = (e: GuestEntry) => !e.secret || isAdmin || (e.authorId && e.authorId === user?.id) || unlockedIds.includes(e.id);
 
   const doDelete = () => {
     const e = entries.find(x => x.id === delFor);
@@ -71,14 +76,12 @@ export default function GuestbookPage() {
     ? entries.filter(e => canRead(e) && (e.body.includes(q) || e.author.includes(q)))
     : entries;
 
-  // 방명록이 쌓이면 페이지로 (v2.0 사용자 요청) — 한 페이지 15개.
-  // 답글이 달리면 한 칸이 길어지므로 도토리(12개)보다 조금만 늘렸다.
   const PER_GB = 15;
   const [page, setPage] = useState(1);
   const pages = Math.max(1, Math.ceil(visible.length / PER_GB));
-  const cur = Math.min(page, pages);      // 검색·삭제로 줄어 페이지가 사라지면 마지막으로 당긴다
+  const cur = Math.min(page, pages);
   const start = (cur - 1) * PER_GB;
-  useEffect(() => { setPage(1); }, [q]);  // 검색어가 바뀌면 첫 장부터
+  useEffect(() => { setPage(1); }, [q]);
 
   return (
     <section className="page">
@@ -88,7 +91,6 @@ export default function GuestbookPage() {
       <div className="panel" style={{ marginBottom: 16 }}>
         <KTextarea placeholder="방명록을 남겨주세요" value={body} onChange={e => setBody(e.target.value)} />
         {!user && (
-          /* 게스트 신원 — 오른쪽 정렬 (v1.9 사용자 요청), 컴팩트 GUEST 바 공용 UI */
           <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 10 }}>
             <GuestIdBar name={gName} pw={gPw} onName={setGName} onPw={setGPw}
               style={{ width: '100%', maxWidth: 380 }} />
@@ -110,7 +112,7 @@ export default function GuestbookPage() {
             <div className="hd">
               {canRead(e)
                 ? <b>{e.secret && '🔒 '}{e.author}</b>
-                : <b style={{ color: 'var(--faint)' }}>🔒 비밀글</b>}
+                : <b style={{ color: 'var(--faint)', cursor: 'var(--cur-pointer,pointer)' }} onClick={() => { setReadPwFor(e.id); setReadPw(''); }}>🔒 비밀글 (클릭하여 열기)</b>}
               <small>
                 {fmtDate(e.date)}
                 {isAdmin && (
@@ -124,8 +126,9 @@ export default function GuestbookPage() {
                 )}
               </small>
             </div>
-            <p style={!canRead(e) ? { color: 'var(--faint)' } : undefined}>
-              {canRead(e) ? e.body : '관리자만 볼 수 있는 글입니다.'}
+            <p style={!canRead(e) ? { color: 'var(--faint)', cursor: 'var(--cur-pointer,pointer)' } : undefined}
+               onClick={() => { if (!canRead(e)) { setReadPwFor(e.id); setReadPw(''); } }}>
+              {canRead(e) ? e.body : '🔒 관리자만 볼 수 있는 글이거나 비밀글입니다. (클릭하여 비밀번호 입력)'}
             </p>
             {e.reply && canRead(e) && (
               <div className="reply"><b>↳ {e.reply.author}</b>{e.reply.text}</div>
@@ -145,6 +148,25 @@ export default function GuestbookPage() {
           <button className="btn btn-dark" onClick={saveReply}>SAVE</button>
         </>}>
         <KTextarea value={replyText} onChange={e => setReplyText(e.target.value)} placeholder="답글 내용" />
+      </Modal>
+
+      {/* 비밀글 열람 비밀번호 확인 모달 */}
+      <Modal open={readPwFor !== null} onClose={() => { setReadPwFor(null); setReadPw(''); }} small title="비밀글 열람"
+        actions={<>
+          <button className="btn btn-ghost" onClick={() => { setReadPwFor(null); setReadPw(''); }}>CANCEL</button>
+          <button className="btn btn-dark" onClick={() => {
+            const e = entries.find(x => x.id === readPwFor);
+            if (!e) return;
+            if (e.guestPw && e.guestPw === readPw) {
+              setUnlockedIds([...unlockedIds, e.id]);
+              setReadPwFor(null); setReadPw('');
+              toast('비밀글이 해제되었습니다');
+            } else {
+              toast('비밀번호가 일치하지 않습니다');
+            }
+          }}>UNLOCK</button>
+        </>}>
+        <KInput placeholder="작성 시 입력한 비밀번호" type="password" value={readPw} onChange={ev => setReadPw(ev.target.value)} />
       </Modal>
 
       {/* 삭제 확인 (게스트는 비밀번호 확인) */}
