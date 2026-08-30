@@ -1022,19 +1022,17 @@ function CursorRow({ state }: { state: CursorState }) {
           // eslint-disable-next-line @next/next/no-img-element
           <img src={url} alt="" style={{ width: 28, height: 28, imageRendering: 'pixelated', border: '1px solid var(--line)', borderRadius: 4 }} />
         )}
-        {/* 수정 포인트 1: accept 속성에 .ani, .cur 형식 추가 */}
         <input id={inputId} type="file" accept="image/png,image/x-icon,image/vnd.microsoft.icon,.cur,.ani" style={{ display: 'none' }}
           onChange={async e => {
             const f = e.target.files?.[0];
             if (f) {
               let blobId: string;
-              // 수정 포인트 2: .ani 파일인 경우 parseAni 활용 처리, 일반 파일은 그대로 putBlob
               if (f.name.toLowerCase().endsWith('.ani')) {
                 const buf = await f.arrayBuffer();
                 const parsed = parseAni(buf);
                 if (parsed && parsed.frames.length > 0) {
-                  // 첫 번째 프레임 혹은 애니메이션 블롭 처리 (상황에 맞게 적용)
-                  blobId = await putBlob(parsed.frames[0].blob);
+                  // 수정 포인트: parsed.frames[0] 자체가 Blob이므로 그대로 putBlob에 전달
+                  blobId = await putBlob(parsed.frames[0]);
                 } else {
                   blobId = await putBlob(f);
                 }
@@ -1068,7 +1066,7 @@ function CursorPane() {
   return (
     <div className="set-sec">
       <h3>마우스 커서</h3>
-      <div className="d">상태별 커서 이미지(PNG 32px 권장) — 등록하지 않은 상태는 기본 커서를 씁니다</div>
+      <div className="d">상태별 커서 이미지 (PNG, CUR, ANI 파일 지원) — 등록하지 않은 상태는 기본 커서를 씁니다</div>
       <div className="set-row">
         <div className="l"><b>커스텀 커서 사용</b></div>
         <KToggle checked={cs.enabled} onChange={v => patchCursor({ enabled: v })} />
