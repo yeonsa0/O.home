@@ -25,7 +25,7 @@ const FOLD_LABEL = { spoiler: '스포일러', adult: '수위 주의' };
 function RoadBlock({ item, comments, onComment, onEditComment, onDeleteComment, canComment, guestMode, editLevel, delLevel, canEditItem, canDeleteItem, onEdit, onDelete }: {
   item: RoadItem;
   comments: Comment[];                                  // 이 그림의 댓글 — 분리 저장분 + 옛 항목 안의 것 (v2.0)
-  onComment: (id: string, text: string, guest?: { name: string; pw: string }) => void;
+  onComment: (id: string, text: string, guest?: { name: string }, parentId?: string) => void;
   onEditComment: (id: string, cid: string, text: string) => void;
   onDeleteComment: (id: string, cid: string) => void;
   canComment: boolean;
@@ -40,14 +40,12 @@ function RoadBlock({ item, comments, onComment, onEditComment, onDeleteComment, 
   const toast = useToast();
   const [open, setOpen] = useState(false);
   const [text, setText] = useState('');
+  const [replyTo, setReplyTo] = useState<string | null>(null);   // 대댓글 (v2.0 사용자 요청)
   const [gName, setGName] = useState('');               // 게스트 닉네임
-  const [gPw, setGPw] = useState('');                   // 게스트 비밀번호 (수정·삭제용)
   // 댓글 인라인 수정 (v1.9)
   const [editCid, setEditCid] = useState<string | null>(null);
   const [editText, setEditText] = useState('');
   // 게스트 댓글 관리 — 비밀번호 확인 모달
-  const [pwAsk, setPwAsk] = useState<{ mode: 'edit' | 'del'; c: Comment } | null>(null);
-  const [pwInput, setPwInput] = useState('');
   const del = useConfirmDelete();
   const folded = item.fold && !open;
   const imgSrc = useBlobUrl(item.imgId ?? item.imgUrl);
@@ -57,23 +55,18 @@ function RoadBlock({ item, comments, onComment, onEditComment, onDeleteComment, 
   };
   const post = () => {
     if (!text.trim()) return;
-    if (guestMode && (!gName.trim() || !gPw)) { toast('게스트는 닉네임과 비밀번호를 입력해 주세요'); return; }
-    onComment(item.id, text.trim(), guestMode ? { name: gName.trim(), pw: gPw } : undefined);
-    setText('');
+    if (guestMode && !gName.trim()) { toast('닉네임을 입력해 주세요'); return; }
+    onComment(item.id, text.trim(), guestMode ? { name: gName.trim() } : undefined, replyTo ?? undefined);
+    setText(''); setReplyTo(null);
   };
+  // 대댓글 (v2.0 사용자 요청) — 게시판과 같은 한 단계 답글
+  const roots = comments.filter(c => !c.parentId);
+  const childrenOf = (pid: string) => comments.filter(c => c.parentId === pid);
   const askManage = (c: Comment, mode: 'edit' | 'del') => {
     const level = mode === 'edit' ? editLevel(c) : delLevel(c);
-    if (level === 'pw') { setPwInput(''); setPwAsk({ mode, c }); return; }
     if (level !== 'free') return;
     if (mode === 'edit') { setEditCid(c.id); setEditText(c.text); }
     else del.ask('이 댓글을 삭제하시겠습니까?', () => onDeleteComment(item.id, c.id));
-  };
-  const confirmPw = () => {
-    if (!pwAsk) return;
-    if (pwInput !== pwAsk.c.guestPw) { toast('비밀번호가 일치하지 않습니다'); return; }
-    if (pwAsk.mode === 'edit') { setEditCid(pwAsk.c.id); setEditText(pwAsk.c.text); }
-    else onDeleteComment(item.id, pwAsk.c.id);
-    setPwAsk(null);
   };
   return (
     <div className="panel roadview-item">
@@ -117,11 +110,18 @@ function RoadBlock({ item, comments, onComment, onEditComment, onDeleteComment, 
       </div>
       <div className="cmt-side">
         <div className="list">
-          {comments.map(c => (
-            <div className="cmt" key={c.id}>
+          {/* 대댓글 (v2.0 사용자 요청) — 뿌리 댓글 아래에 답글을 한 단계 들여 보여 준다 */}
+          {roots.flatMap(r => [r, ...childrenOf(r.id)]).map(c => (
+            <div className={`cmt ${c.parentId ? 'reply-depth' : ''}`} key={c.id}>
               <b>{c.author}</b><small>{fmtDate(c.date)}</small>
               {editCid !== c.id && (
                 <>
+                  {canComment && !c.parentId && (
+                    <small style={{ cursor: 'var(--cur-pointer,pointer)', color: 'var(--accent)', marginLeft: 8 }}
+                      onClick={() => setReplyTo(replyTo === c.id ? null : c.id)}>
+                      {replyTo === c.id ? '답글 취소' : '답글'}
+                    </small>
+                  )}
                   {editLevel(c) !== null && (
                     <small style={{ cursor: 'var(--cur-pointer,pointer)', color: 'var(--accent)', marginLeft: 8 }}
                       onClick={() => askManage(c, 'edit')}>수정</small>
@@ -150,10 +150,10 @@ function RoadBlock({ item, comments, onComment, onEditComment, onDeleteComment, 
         {/* 게스트 작성(방문자 허용) — 구분선 아래 GUEST 바 + 입력줄 세로 배치 */}
         <div className={`cmt-input ${guestMode && canComment ? 'guest' : ''}`}>
           {guestMode && canComment && (
-            <GuestIdBar name={gName} pw={gPw} onName={setGName} onPw={setGPw} />
+            <GuestIdBar name={gName} onName={setGName} />
           )}
           <div className="ci-row" style={guestMode && canComment ? undefined : { display: 'contents' }}>
-            <KInput placeholder={canComment ? '댓글 남기기...' : '댓글은 로그인 후'} value={text}
+            <KInput placeholder={canComment ? (replyTo ? '답글 작성...' : '댓글 남기기...') : '댓글은 로그인 후'} value={text}
               disabled={!canComment}
               onChange={e => setText(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter') post(); }} />
@@ -162,16 +162,6 @@ function RoadBlock({ item, comments, onComment, onEditComment, onDeleteComment, 
         </div>
       </div>
       {del.element}
-      {/* 게스트 댓글 관리 — 작성 시 입력한 비밀번호 확인 */}
-      <Modal open={pwAsk !== null} onClose={() => setPwAsk(null)} small title={pwAsk?.mode === 'del' ? '댓글 삭제' : '댓글 수정'}
-        actions={<>
-          <button className="btn btn-ghost" onClick={() => setPwAsk(null)}>CANCEL</button>
-          <button className="btn btn-dark" onClick={confirmPw}>OK</button>
-        </>}>
-        <KInput placeholder="작성 시 입력한 비밀번호" type="password" value={pwInput} autoFocus
-          onChange={e => setPwInput(e.target.value)}
-          onKeyDown={e => { if (e.key === 'Enter') confirmPw(); }} />
-      </Modal>
     </div>
   );
 }
@@ -229,13 +219,32 @@ function RoadviewPageInner() {
     toast(`${padNo(it.no)} 업로드되었습니다`);
   };
 
-  const addComment = (id: string, text: string, guest?: { name: string; pw: string }) => {
-    // 게스트 댓글 (방문자 권한, v1.9) — 닉네임+비밀번호, authorId는 빈 값
-    const base = { id: newId(), text, date: new Date().toISOString(), target: 'road' as const, targetId: id };
+  const addComment = (id: string, text: string, guest?: { name: string }, parentId?: string) => {
+    // 게스트 댓글 (방문자 권한, v1.9) — 닉네임만, authorId는 빈 값. parentId가 있으면 대댓글 (v2.0)
+    const base = { id: newId(), text, date: new Date().toISOString(), target: 'road' as const, targetId: id, parentId };
     const c: CommentRow = guest
-      ? { ...base, author: guest.name, authorId: '', guestPw: guest.pw }
+      ? { ...base, author: guest.name, authorId: '' }
       : { ...base, author: user!.nickname, authorId: user!.id };
     setCmtRows([...cmtRows, c]);
+    // 답글이면 뿌리 주인만이 아니라 **그 대화에 답글을 단 전원**에게 (v2.0 포크 제보 — 게시판과 동일).
+    // 그림 작성자는 아래에서 이미 받으므로 뺀다
+    if (parentId) {
+      const target0 = items.find(it => it.id === id);
+      const thread = commentsFor(cmtRows, 'road', id, target0?.comments ?? [])
+        .filter(x => x.id === parentId || x.parentId === parentId);
+      const rootAuthor = thread.find(x => x.id === parentId)?.authorId;
+      const seen = new Set<string>();
+      for (const t of thread) {
+        const to = t.authorId;
+        if (!to || to === (user?.id ?? '') || to === target0?.authorId || seen.has(to)) continue;
+        seen.add(to);
+        pushNotif({
+          type: 'comment', toUserId: to, href: '/loadb',
+          title: to === rootAuthor ? '내 댓글에 답글이 달렸습니다' : '참여한 댓글에 새 답글이 달렸습니다',
+          body: c.author + ' — ' + text.slice(0, 50),
+        });
+      }
+    }
     // 알림 (4.13) — 그림 작성자에게 (본인 댓글 제외)
     const target = items.find(it => it.id === id);
     if (target && target.authorId && target.authorId !== (user?.id ?? '')) {
@@ -254,18 +263,17 @@ function RoadviewPageInner() {
     else setItems(items.map(it => it.id === id ? { ...it, comments: it.comments.map(c => c.id === cid ? { ...c, text } : c) } : it));
   };
   const deleteComment = (id: string, cid: string) => {
-    if (cmtRows.some(c => c.id === cid)) setCmtRows(cmtRows.filter(c => c.id !== cid));
-    else setItems(items.map(it => it.id === id ? { ...it, comments: it.comments.filter(c => c.id !== cid) } : it));
+    // 뿌리 댓글을 지우면 딸린 답글도 함께 (v2.0) — 남겨 두면 주인 없는 줄이 된다
+    const gone = (c: { id: string; parentId?: string }) => c.id === cid || c.parentId === cid;
+    if (cmtRows.some(gone)) setCmtRows(cmtRows.filter(c => !gone(c)));
+    if (items.some(it => it.id === id && it.comments.some(gone)))
+      setItems(items.map(it => it.id === id ? { ...it, comments: it.comments.filter(c => !gone(c)) } : it));
   };
-  // 수정은 작성자 본인만(게스트는 비밀번호 확인) — 관리자도 타인 댓글은 삭제만 (v1.9 사용자 확정)
-  const editLevel = (c: Comment): 'free' | 'pw' | null => {
-    if (user && c.authorId === user.id) return 'free';
-    return !c.authorId && c.guestPw ? 'pw' : null;
-  };
-  const delLevel = (c: Comment): 'free' | 'pw' | null => {
-    if (isAdmin || (user && c.authorId === user.id)) return 'free';
-    return !c.authorId && c.guestPw ? 'pw' : null;
-  };
+  /* 수정은 작성자 본인만 — 관리자도 타인 댓글은 삭제만 (v1.9 사용자 확정).
+     **손님 댓글은 손댈 수 없다** (v2.0 사용자 확정) — 비밀번호로 본인을 확인하던 길을
+     없앴다. 서버가 로그인한 사람에게만 수정·삭제를 허용하므로 실제로 되지 않던 기능이다. */
+  const editLevel = (c: Comment): 'free' | null => (user && c.authorId === user.id ? 'free' : null);
+  const delLevel = (c: Comment): 'free' | null => (isAdmin || (user && c.authorId === user.id) ? 'free' : null);
 
   const visible = items.filter(it => !q || it.author.includes(q)
     || padNo(it.no).includes(q) || String(it.no ?? '').includes(q));

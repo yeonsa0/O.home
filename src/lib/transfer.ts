@@ -9,14 +9,14 @@
 import { backend, COLLECTION_OF, CONTENT_COLLECTIONS } from './backend';
 import type { Backend, ListItem } from './backend';
 import { allBlobs, getBlob, putBlobAs, putBlob } from './blobStore';
-import { getSetting, setSetting, SETTING_KEYS } from './settingStore';
+import { getSetting, setSetting, SETTING_KEYS, isLocalOnlySetting } from './settingStore';
 
 export interface Snapshot {
   version: 2;
   createdAt: string;
   collections: Record<string, ListItem[]>;   // 컬렉션 → 항목들
   settings: Record<string, unknown>;         // 사이트 설정
-  members?: { id: string; nickname: string; role: string }[];   // 기록용 (계정 자체는 옮길 수 없음)
+  members?: { id: string; nickname: string; role: string; avatarUrl?: string }[];   // 기록용 (계정 자체는 옮길 수 없음)
   /** 읽지 못한 컬렉션·설정 (v2.0) — 「안 읽힘」과 「비어 있음」을 구별해야 한다.
    *  이미지 정리는 이게 비어 있을 때만 돌아간다(못 읽은 글의 이미지를 지워 버리므로) */
   failed?: string[];
@@ -109,6 +109,9 @@ export async function findOrphanFiles(be: Backend): Promise<{ ref: string; size:
   const used = new Set<string>();
   collectRefs(snap.collections, new Set(), used);
   collectRefs(snap.settings, new Set(), used);
+  // 회원 프로필 사진도 쓰이는 파일이다 (v2.0 사용자 제보) — 콘텐츠·설정만 훑던 시절
+  // 어디에도 참조가 안 잡혀 「아무도 안 쓰는 파일」로 지워졌다
+  collectRefs(snap.members ?? [], new Set(), used);
   const all = await be.listFiles();
   return all.filter(f => !used.has(f.ref));
 }
@@ -132,7 +135,9 @@ export async function dumpAll(be: Backend | null, onProgress?: Progress): Promis
     onProgress?.('설정 읽는 중');
     try { snap.settings = await be.fetchAllSettings(); }
     catch { snap.settings = {}; (snap.failed ??= []).push('설정'); }
-    try { snap.members = await be.listMembers(); } catch { /* 권한 없으면 생략 */ }
+    // 회원 목록도 못 읽으면 failed에 적는다 (v2.0 사용자 제보 — 프로필 사진이 정리에 지워짐).
+    // 프로필 사진 참조는 여기서만 나오므로, 이걸 못 읽은 채 정리를 돌리면 안 된다
+    try { snap.members = await be.listMembers(); } catch { (snap.failed ??= []).push('회원 프로필'); }
     return snap;
   }
 
@@ -200,6 +205,9 @@ export async function loadAll(
     }
     for (const [k, v] of Object.entries(settings)) {
       if (v === undefined || v === null) continue;
+      // 기기 보관 전용 키(알림 on/off 등)는 서버로 올리지 않는다 (v2.0 포크 제보) —
+      // 한 번 올라가면 매 접속마다 그 값이 로컬을 덮어써 설정이 되돌아간다
+      if (isLocalOnlySetting(k)) continue;
       await target.saveSetting(k, v);
     }
     return { files: fileCount, items };

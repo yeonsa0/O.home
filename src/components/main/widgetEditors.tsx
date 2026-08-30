@@ -1,8 +1,6 @@
 'use client';
-
 // 위젯 설정 공용 에디터 (5장 「위젯」 카테고리 · 메인 위젯 관리 모달 공유)
 // 같은 mainStore를 갱신하므로 메인에서 바꾸든 환경설정에서 바꾸든 즉시 서로 반영됨
-
 import React, { useEffect, useState } from 'react';
 import { WidgetConf, useMainStore, decoSlides, DecoSlide } from '@/lib/mainStore';
 import { KInput, KTextarea, KCheck, KStep, KDate } from '@/components/ui/Kit';
@@ -283,6 +281,18 @@ export function DecoEditor({ conf, onClose }: { conf: WidgetConf; onClose?: () =
             <KStep value={sec} min={2} max={60} suffix="초" onChange={v => set({ interval: v })} />
           </>
         )}
+      </div>
+
+      {/* 직접 크기 (v2.0 사용자 요청) — 비우면 지금처럼 자리(그리드 칸)에 맞춘다 */}
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <span className="cp-lb">크기</span>
+        <KInput placeholder="가로 px (비우면 자동)" value={String((conf.settings.wPx as number | undefined) ?? '')}
+          onChange={e => { const n = parseInt(e.target.value, 10); set({ wPx: Number.isFinite(n) && n > 0 ? Math.min(n, 2000) : undefined }); }}
+          style={{ width: 140 }} />
+        <span style={{ color: 'var(--faint)', fontSize: 11 }}>×</span>
+        <KInput placeholder="세로 px (비우면 자동)" value={String((conf.settings.hPx as number | undefined) ?? '')}
+          onChange={e => { const n = parseInt(e.target.value, 10); set({ hPx: Number.isFinite(n) && n > 0 ? Math.min(n, 2000) : undefined }); }}
+          style={{ width: 140 }} />
       </div>
 
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>

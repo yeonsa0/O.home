@@ -5,6 +5,7 @@ import React, { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
 import { useMenuSettings, pageTitleFor, menuLabelOf } from '@/lib/menuStore';
+import { canonSecKey } from '@/lib/sectionStore';
 import { refreshPage } from '@/lib/pageRefresh';
 import { getRawSetting, setSetting } from '@/lib/settingStore';
 
@@ -27,23 +28,31 @@ export function PageTitle({ children, href, style }: {
   const [search, setSearch] = useState('');
   useEffect(() => { setSearch(window.location.search); });
   const q = new URLSearchParams(search);
-  const sq = q.get('s');
+  // ?s=는 별명(slug)으로 통일해 찾는다 (v2.0 사용자 제보) — 메뉴에는 별명 주소가 적혀 있는데
+  // 글쓰기 취소 등 코드가 만든 이동은 id 주소여서, 같은 페이지인데 타이틀을 못 찾았다
+  const sq0 = q.get('s');
+  const sq = sq0 ? canonSecKey(pathname, sq0) : sq0;
   const bq = q.get('b');
   const full = pathname + (sq ? `?s=${sq}` : bq ? `?b=${bq}` : '');
   const target = href ?? (full || `/${pathname.split('/')[1] ?? ''}`);
   /* 큰 글씨는 ① 메뉴 관리에서 정한 타이틀 ② (추가 메뉴면) 메뉴에 적은 이름 ③ 페이지 기본 제목.
      추가 메뉴에서만 이름을 끌어온다 — 원래 메뉴는 「리스트 → BOARD」처럼 이름과 제목이
-     일부러 다르므로 여기서 바꾸면 기존 홈의 제목이 전부 달라진다 */
+     일부러 다르므로 여기서 바꾸면 기존 홈의 제목이 전부 달라진다.
+     href로 받은 주소도 쿼리(?s=/?b=)가 있으면 추가 메뉴다 — 상세·글쓰기 페이지가 소속을 href로
+     알려 주는 경우로, 여기서도 메뉴에 적은 이름까지 끌어온다 (v2.0 사용자 제보 — 「추가한
+     게시판의 상세로 가면 원래 페이지 제목이 뜬다」) */
+  const isExtra = (h: string) => /[?&][sb]=/.test(h);
   const custom = href
-    ? pageTitleFor(ms, href)
+    ? pageTitleFor(ms, href) ?? (isExtra(href) ? menuLabelOf(ms, href) : null)
     : full !== pathname
       ? pageTitleFor(ms, full) ?? menuLabelOf(ms, full)
       : pageTitleFor(ms, pathname);
-  // 지금 있는 페이지면 다시 불러오기 — 상단 메뉴 재클릭과 동일 동작 (v1.9 사용자 요청)
+  // 지금 있는 페이지면 다시 불러오기 — 상단 메뉴 재클릭과 동일 동작 (v1.9 사용자 요청).
+  // 추가 게시판·섹션의 목록(쿼리 포함 주소)에서도 같은 동작이 되게 full과도 비교한다 (v2.0)
   return (
     <h1 style={style} onClick={() => {
       const t = target || '/';
-      if (t === pathname) refreshPage();   // 새로고침 아님 — 페이지만 처음 상태로 (v1.9)
+      if (t === pathname || t === full) refreshPage();   // 새로고침 아님 — 페이지만 처음 상태로 (v1.9)
       else router.push(t);
     }}>
       {custom ?? children}

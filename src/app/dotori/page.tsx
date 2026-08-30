@@ -96,7 +96,7 @@ function DotoriPageInner() {
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <SearchBar placeholder="시나리오·라이터·태그 검색" onSearch={setQ} />
-          {isAdmin && <button className="btn btn-dark" onClick={() => router.push('/dotori/new' + secQuery(sec.id))}>＋ ADD</button>}
+          {isAdmin && <button className="btn btn-dark" onClick={() => router.push('/dotori/new' + secQuery('dotori', sec.id))}>＋ ADD</button>}
         </div>
       </div>
 
