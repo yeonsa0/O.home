@@ -24,7 +24,7 @@ export default function GuestbookPage() {
   const [delFor, setDelFor] = useState<string | null>(null);
   const [delPw, setDelPw] = useState('');
   
-  // 비밀글 해제(열람)를 위한 상태
+  // 비밀글 해제(열람)를 위한 상태 (localStorage 연동으로 새로고침해도 유지되게 하면 더 좋습니다)
   const [unlockedIds, setUnlockedIds] = useState<string[]>([]);
   const [readPwFor, setReadPwFor] = useState<string | null>(null);
   const [readPw, setReadPw] = useState('');
@@ -36,13 +36,13 @@ export default function GuestbookPage() {
       id: newId(),
       author: user ? user.nickname : gName.trim(),
       authorId: user?.id,
-      guestPw: user ? undefined : gPw,
+      guestPw: user ? undefined : gPw, // 게스트 비밀번호 저장
       body: body.trim(), secret, date: new Date().toISOString(), reply: null,
     };
     setEntries([e, ...entries]);
     setBody(''); setSecret(false); setGName(''); setGPw('');
     toast('방명록이 등록되었습니다');
-    // 알림 (4.13) — 관리자에게 (본인 작성 제외)
+    // 알림 — 관리자에게 (본인 작성 제외)
     if (user?.id !== 'admin') {
       pushNotif({
         type: 'guest', toUserId: 'admin', href: '/guest',
@@ -52,13 +52,23 @@ export default function GuestbookPage() {
     }
   };
 
+  // 열람 권한: 관리자이거나, 로그인한 본인 글이거나, 비밀번호를 풀어 해제된 ID 목록에 있거나, 비밀글이 아닐 때
   const canRead = (e: GuestEntry) => !e.secret || isAdmin || (e.authorId && e.authorId === user?.id) || unlockedIds.includes(e.id);
 
   const doDelete = () => {
     const e = entries.find(x => x.id === delFor);
     if (!e) return;
-    const allowed = isAdmin || (e.authorId && e.authorId === user?.id) || (e.guestPw && e.guestPw === delPw);
-    if (!allowed) { toast('비밀번호가 일치하지 않습니다'); return; }
+    
+    // 삭제 권한 체크: 관리자이거나, 로그인한 작성자 본인이거나, 게스트 비밀번호가 일치하는 경우
+    const isMyPostByLogin = e.authorId && e.authorId === user?.id;
+    const isMyPostByGuestPw = !e.authorId && e.guestPw && e.guestPw === delPw;
+    const allowed = isAdmin || isMyPostByLogin || isMyPostByGuestPw;
+
+    if (!allowed) {
+      toast('비밀번호가 일치하지 않습니다');
+      return;
+    }
+    
     setEntries(entries.filter(x => x.id !== delFor));
     setDelFor(null); setDelPw('');
     toast('삭제되었습니다');
@@ -97,7 +107,7 @@ export default function GuestbookPage() {
           </div>
         )}
         <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 10, alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
-          <KCheck label={<span style={{ fontSize: 12 }}>비밀글 (관리자만 열람)</span>} checked={secret} onChange={setSecret} />
+          <KCheck label={<span style={{ fontSize: 12 }}>비밀글 (관리자 및 작성자 열람)</span>} checked={secret} onChange={setSecret} />
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <SearchBar light onSearch={setQ} />
             <button className="btn btn-dark" onClick={leave}>LEAVE</button>
@@ -107,34 +117,49 @@ export default function GuestbookPage() {
 
       {/* 목록 */}
       <div className="panel flush">
-        {visible.slice(start, start + PER_GB).map(e => (
-          <div className="gb-item" key={e.id}>
-            <div className="hd">
-              {canRead(e)
-                ? <b>{e.secret && '🔒 '}{e.author}</b>
-                : <b style={{ color: 'var(--faint)', cursor: 'var(--cur-pointer,pointer)' }} onClick={() => { setReadPwFor(e.id); setReadPw(''); }}>🔒 비밀글 (클릭하여 열기)</b>}
-              <small>
-                {fmtDate(e.date)}
-                {isAdmin && (
-                  <span style={{ cursor: 'var(--cur-pointer,pointer)', marginLeft: 10, color: 'var(--accent)' }}
-                    onClick={() => { setReplyFor(e.id); setReplyText(e.reply?.text ?? ''); }}>
-                    답글
-                  </span>
+        {visible.slice(start, start + PER_GB).map(e => {
+          const readable = canRead(e);
+          // 삭제 권한 판단 (로그인 유저 본인, 관리자, 또는 게스트)
+          const canDelete = isAdmin || (e.authorId && e.authorId === user?.id) || !e.authorId;
+
+          return (
+            <div className="gb-item" key={e.id}>
+              <div className="hd">
+                {readable ? (
+                  <b>{e.secret && '🔒 '}{e.author}</b>
+                ) : (
+                  <b 
+                    style={{ color: 'var(--faint)', cursor: 'pointer' }} 
+                    onClick={() => { setReadPwFor(e.id); setReadPw(''); }}
+                  >
+                    🔒 비밀글 (클릭하여 비밀번호 입력)
+                  </b>
                 )}
-                {(isAdmin || (e.authorId && e.authorId === user?.id) || (!e.authorId && !user)) && (
-                  <span style={{ cursor: 'var(--cur-pointer,pointer)', marginLeft: 8 }} onClick={() => setDelFor(e.id)}>삭제</span>
-                )}
-              </small>
+                <small>
+                  {fmtDate(e.date)}
+                  {isAdmin && (
+                    <span style={{ cursor: 'pointer', marginLeft: 10, color: 'var(--accent)' }}
+                      onClick={() => { setReplyFor(e.id); setReplyText(e.reply?.text ?? ''); }}>
+                      답글
+                    </span>
+                  )}
+                  {canDelete && (
+                    <span style={{ cursor: 'pointer', marginLeft: 8 }} onClick={() => { setDelFor(e.id); setDelPw(''); }}>삭제</span>
+                  )}
+                </small>
+              </div>
+              <p 
+                style={!readable ? { color: 'var(--faint)', cursor: 'pointer' } : undefined}
+                onClick={() => { if (!readable) { setReadPwFor(e.id); setReadPw(''); } }}
+              >
+                {readable ? e.body : '🔒 비밀글입니다. 클릭하여 작성 시 입력한 비밀번호를 입력해주세요.'}
+              </p>
+              {e.reply && readable && (
+                <div className="reply"><b>↳ {e.reply.author}</b>{e.reply.text}</div>
+              )}
             </div>
-            <p style={!canRead(e) ? { color: 'var(--faint)', cursor: 'var(--cur-pointer,pointer)' } : undefined}
-               onClick={() => { if (!canRead(e)) { setReadPwFor(e.id); setReadPw(''); } }}>
-              {canRead(e) ? e.body : '🔒 관리자만 볼 수 있는 글이거나 비밀글입니다. (클릭하여 비밀번호 입력)'}
-            </p>
-            {e.reply && canRead(e) && (
-              <div className="reply"><b>↳ {e.reply.author}</b>{e.reply.text}</div>
-            )}
-          </div>
-        ))}
+          );
+        })}
         {visible.length === 0 && (
           <div style={{ padding: 36, textAlign: 'center', fontSize: 12.5, color: 'var(--faint)' }}>아직 방명록이 없습니다</div>
         )}
@@ -181,7 +206,7 @@ export default function GuestbookPage() {
           return needPw
             ? <KInput placeholder="작성 시 입력한 비밀번호" type="password" value={delPw} onChange={ev => setDelPw(ev.target.value)} />
             : <p style={{ fontSize: 13, color: 'var(--sub)' }}>이 방명록을 삭제할까요?</p>;
-        })()}
+        })}
       </Modal>
     </section>
   );
