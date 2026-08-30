@@ -1797,3 +1797,22 @@ body.edit-on .main-grid.gridlines .wgt{outline-offset:0}
 .paint-card-body{padding:10px 12px}
 .paint-card-title{font-size:calc(12px*var(--fs,1));font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .paint-card-meta{font-size:calc(10.5px*var(--fs,1));color:var(--faint);margin-top:3px;display:flex;justify-content:space-between;gap:6px}
+/* ---------- 커스텀 커서 전역 적용 (v1.9) ---------- */
+body {
+  cursor: var(--cur-default, default);
+}
+
+/* 버튼, 링크, 입력 요소 및 상호작용 가능한 모든 요소에 포인터 커서 변수 적용 */
+button, a, select, summary, 
+.k-check, .k-radio, .k-toggle, .k-step button, 
+.k-select .cur, .k-select .opts div, .k-sel-pop div,
+.k-cal .days button, .k-cal .hd button,
+.user-chip, .gnb button, .gnb a.gnb-link,
+.bgm, .bgm-list .it, .vol, .tc-faces .fc {
+  cursor: var(--cur-pointer, pointer);
+}
+
+/* 텍스트 입력창은 I-beam(텍스트 커서) 유지 */
+input[type="text"], input[type="password"], input[type="number"], textarea {
+  cursor: text;
+}
