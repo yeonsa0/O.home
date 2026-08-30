@@ -1022,10 +1022,27 @@ function CursorRow({ state }: { state: CursorState }) {
           // eslint-disable-next-line @next/next/no-img-element
           <img src={url} alt="" style={{ width: 28, height: 28, imageRendering: 'pixelated', border: '1px solid var(--line)', borderRadius: 4 }} />
         )}
-        <input id={inputId} type="file" accept="image/png" style={{ display: 'none' }}
+        {/* 수정 포인트 1: accept 속성에 .ani, .cur 형식 추가 */}
+        <input id={inputId} type="file" accept="image/png,image/x-icon,image/vnd.microsoft.icon,.cur,.ani" style={{ display: 'none' }}
           onChange={async e => {
             const f = e.target.files?.[0];
-            if (f) patchCursor({ states: { ...cs.states, [state]: { imgId: await putBlob(f), hx: entry?.hx ?? 0, hy: entry?.hy ?? 0 } } });
+            if (f) {
+              let blobId: string;
+              // 수정 포인트 2: .ani 파일인 경우 parseAni 활용 처리, 일반 파일은 그대로 putBlob
+              if (f.name.toLowerCase().endsWith('.ani')) {
+                const buf = await f.arrayBuffer();
+                const parsed = parseAni(buf);
+                if (parsed && parsed.frames.length > 0) {
+                  // 첫 번째 프레임 혹은 애니메이션 블롭 처리 (상황에 맞게 적용)
+                  blobId = await putBlob(parsed.frames[0].blob);
+                } else {
+                  blobId = await putBlob(f);
+                }
+              } else {
+                blobId = await putBlob(f);
+              }
+              patchCursor({ states: { ...cs.states, [state]: { imgId: blobId, hx: entry?.hx ?? 0, hy: entry?.hy ?? 0 } } });
+            }
             e.target.value = '';
           }} />
         <button className="btn btn-ghost" style={{ fontSize: 11, padding: '5px 12px' }}
