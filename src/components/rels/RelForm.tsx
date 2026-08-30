@@ -171,8 +171,7 @@ export function RelForm({ initial, auId, myChars, memberNames, existingIds, onSa
 
   const [kind, setKind] = useState<'pair' | 'multi'>(initial?.kind ?? 'pair');
   const [name, setName] = useState(initial?.name ?? '');
-  // 페이지 주소 /rels/{slug} — 신규는 비우면 자동(id). 수정에서도 바꿀 수 있다 (v2.0 사용자 요청)
-  const [slug, setSlug] = useState(initial?.slug ?? '');
+  const [slug, setSlug] = useState('');   // 페이지 주소 /rels/{slug} (v1.9 — 신규 등록, 비우면 자동)
   const [catchphrase, setCatchphrase] = useState(auObj ? auObj.catchphrase : (initial?.catchphrase ?? ''));
   const [visibility, setVisibility] = useState<Visibility>(initial?.visibility ?? 'public');
   const [cp, setCp] = useState<RelCpTag>(initial?.cp ?? 'cp');   // CP/NCP (v1.9)
@@ -296,15 +295,14 @@ export function RelForm({ initial, auId, myChars, memberNames, existingIds, onSa
 
   const save = async () => {
     if (!name.trim()) { toast('자관 이름을 입력해 주세요'); return; }
-    // 페이지 주소 (v1.9 / 수정도 가능 v2.0) — 유효성·중복 검사
-    if (slug && slug !== (initial?.slug ?? '')) {
+    // 페이지 주소 (v1.9) — 유효성·중복 검사
+    if (isNew && slug) {
       if (!isValidSlug(slug)) { toast('주소는 영문 소문자·숫자·하이픈만 쓸 수 있습니다'); return; }
       if (existingIds?.includes(slug)) { toast('이미 사용 중인 주소입니다 — 다른 주소를 입력해 주세요'); return; }
     }
     const artIds = await Promise.all(arts.map(a => (a.file ? putBlob(a.file) : Promise.resolve(a.ref!))));
     onSave({
-      // 수정에서 정한 주소는 별명으로 (v2.0) — 신규는 rels/new가 이 값을 id로 쓴다
-      slug: slug.trim() || undefined,
+      slug: isNew && slug ? slug : undefined,
       name: name.trim().toUpperCase(),
       catchphrase: catchphrase.trim(),
       kind, visibility, fontId, bodyFontId,
@@ -641,16 +639,14 @@ export function RelForm({ initial, auId, myChars, memberNames, existingIds, onSa
               </div>
             )}
             {/* 페이지 주소 (v1.9) — /rels/{slug}, 비우면 자동 · 중복이면 경고 */}
-            {/* 수정에서도 바꿀 수 있다 (v2.0 사용자 요청) — 비우면 원래 주소(id) 그대로.
-                AU 편집에서는 주소가 base 소관이라 숨긴다 */}
-            {!auObj && (
+            {isNew && (
               <div>
                 <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                   <span style={{ fontSize: 12, color: 'var(--faint)', whiteSpace: 'nowrap' }}>/rels/</span>
-                  <KInput placeholder={isNew ? '페이지 주소 (선택)' : `페이지 주소 (비우면 ${initial?.id})`} value={slug}
+                  <KInput placeholder="페이지 주소 (선택)" value={slug}
                     onChange={e => setSlug(slugify(e.target.value))} style={{ flex: 1 }} />
                 </div>
-                {slug && slug !== (initial?.slug ?? '') && existingIds?.includes(slug) && (
+                {slug && existingIds?.includes(slug) && (
                   <p style={{ margin: '4px 0 0', fontSize: 11, color: 'var(--accent)' }}>이미 사용 중인 주소입니다</p>
                 )}
               </div>

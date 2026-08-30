@@ -41,8 +41,7 @@ function BackupPageInner() {
 
   const visible = posts
     .filter(p => isAdmin || p.visibility === 'public' || (p.visibility === 'member' && user))
-    .filter(p => !q || p.title.includes(q) || p.category.includes(q)
-      || (p.tags ?? []).some(t => t.toLowerCase().includes(q.toLowerCase())));   // 태그 검색 (v2.0)
+    .filter(p => !q || p.title.includes(q) || p.category.includes(q));
 
   // 편집모드 카드 드래그 정렬 (v1.9 — 갤러리 보기)
   const sort = useCardSort(visible, next => setPosts(mergeOrder(posts, next)), editOn && isAdmin);
@@ -74,7 +73,7 @@ function BackupPageInner() {
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <SearchBar onSearch={setQ} />
-          {user && <button className="btn btn-dark" onClick={() => router.push('/gallery/write' + secQuery('gallery', sec.id))}>✎ WRITE</button>}
+          {user && <button className="btn btn-dark" onClick={() => router.push('/gallery/write' + secQuery(sec.id))}>✎ WRITE</button>}
         </div>
       </div>
 
@@ -105,14 +104,7 @@ function BackupPageInner() {
                     </div>
                   )}
                 </div>
-                <div className="info">
-                  <b>{p.title}</b>
-                  <small>
-                    {meta(p)}
-                    {/* 태그 (v2.0 사용자 요청) */}
-                    {(p.tags ?? []).map(t => <i key={t} className="tag-in">#{t}</i>)}
-                  </small>
-                </div>
+                <div className="info"><b>{p.title}</b><small>{meta(p)}</small></div>
               </div>
             );
           })}
@@ -129,11 +121,7 @@ function BackupPageInner() {
                     ? <span className="pill red" style={{ marginLeft: 6 }}>접힘</span>
                     : <span style={{ ...boardBadgeStyle(typeBadge(p.type)), marginLeft: 6 }}>{typeBadge(p.type)?.label}</span>}
                 </b>
-                <small>
-                  {meta(p)}
-                  {/* 태그 — 작성자 왼쪽 줄에 (v2.0 사용자 요청) */}
-                  {(p.tags ?? []).map(t => <i key={t} className="tag-in">#{t}</i>)}
-                </small>
+                <small>{meta(p)}</small>
               </div>
               <small>{p.author}</small>
             </div>

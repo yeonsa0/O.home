@@ -10,8 +10,16 @@ import { renderBody } from '@/lib/sanitize';
 import { KInput, KTextarea, KSelect, KCheck } from '@/components/ui/Kit';
 import { CropEditor, CropImg, CropValue } from '@/components/ui/CropEditor';
 import { RichEditor } from '@/components/ui/RichEditor';
+import { PaintCanvas, PaintCanvasHandle } from '@/components/paint/PaintCanvas';
+import { putBlob } from '@/lib/blobStore';
 import { useToast } from '@/components/ui/Toast';
 import { PageTitle, EditableDesc } from '@/components/ui/PageText';
+
+/** 본문에서 첫 이미지 추출 (그림판 이어그리기/수정 시 기존 그림 불러오기용) */
+function firstImage(body: string): string | undefined {
+  const html = /<img[^>]*src=["']([^"']+)["']/i.exec(body);
+  return html ? html[1] : undefined;
+}
 
 function WriteInner() {
   const router = useRouter();
@@ -19,11 +27,25 @@ function WriteInner() {
   const toast = useToast();
   const params = useSearchParams();
   const editPid = params.get('edit');
+  const originId = params.get('origin'); // 그림판 이어그리기 — 원본 글 id
   const [posts, setPosts, postsLoaded] = useLocalList<Post>('ohome.board.v1', BOARD_SEED);
   const editing = editPid ? posts.find(p => p.id === editPid) : undefined;
   const bid = editing?.boardId ?? params.get('b') ?? MAIN_BOARD_ID;
   const { boards } = useBoards();
   const board = boards.find(b => b.id === bid) ?? boards[0];
+  const isPaint = board.skin === 'paint';
+  const originPost = originId ? posts.find(p => p.id === originId) : undefined;
+  // 원본 글이 비밀글인데 볼 권한이 없으면 이어그리기 자체를 성립시키지 않는다 (v2.0) —
+  // 그림만 몰래 가져와 새 글을 만들 수 있으면 비밀글 보호가 뚫린다
+  const canReadOrigin = !originPost || !originPost.secret || isAdmin || (!!user && originPost.authorId === user.id);
+  const usableOrigin = canReadOrigin ? originPost : undefined;
+  const canvasRef = useRef<PaintCanvasHandle | null>(null);
+  // 그림판 캔버스에 처음 얹을 이미지 — 수정 중이면 기존 그림, 이어그리기면 원본 글 그림
+  const paintBaseImage = editing ? firstImage(editing.body) : (usableOrigin ? firstImage(usableOrigin.body) : undefined);
+  useEffect(() => {
+    if (originId && !canReadOrigin) toast('원본 그림을 볼 수 없어 새 그림으로 시작합니다');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [originId, canReadOrigin]);
   const [title, setTitle] = useState('');
   const [writeMode, setWriteMode] = useState<'editor' | 'md' | 'html'>('editor'); // 에디터가 기본
   const [body, setBody] = useState('');
@@ -33,10 +55,6 @@ function WriteInner() {
   }, [board.cats.length]);
   const [secret, setSecret] = useState(false);
   const [notice, setNotice] = useState(false);
-  // 태그 (v2.0 사용자 요청) — 쉼표로 구분해 입력, 저장할 때 배열로
-  const [tagsText, setTagsText] = useState('');
-  const parseTags = (s: string) =>
-    [...new Set(s.split(',').map(t => t.trim().replace(/^#/, '')).filter(Boolean))];
   const [foldType, setFoldType] = useState<FoldType | 'none'>('none');
   const [foldLabel, setFoldLabel] = useState('');
   // 티켓 스킨 대표 이미지 (v1.9) — 본문에 삽입한 이미지 중 선택 + 16:9 썸네일 크롭
@@ -69,34 +87,56 @@ function WriteInner() {
     setCategory(p.category);
     setSecret(p.secret); setNotice(p.notice);
     setFoldType(p.fold?.type ?? 'none'); setFoldLabel(p.fold?.label ?? '');
-    setTagsText((p.tags ?? []).join(', '));
     setThumbSrc(p.thumbSrc); setThumbCrop(p.thumbCrop);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editPid, postsLoaded, posts]);
 
   const preview = useMemo(() => renderBody(writeMode === 'md' ? 'md' : 'html', body), [writeMode, body]);
 
-  if (!user) {
+  // 방문자(비로그인) 글쓰기 — 그 게시판의 글쓰기 권한이 "전체"일 때만, 새 글에 한해서 허용
+  // (수정은 언제나 로그인 필요 — 본인 확인 수단이 없어 손댈 수 없게)
+  const [guestName, setGuestName] = useState('');
+  const guestAllowed = !editing && board.permWrite === 'guest';
+
+  if (!user && !guestAllowed) {
     return (
       <section className="page">
         <div className="page-head"><PageTitle>WRITE</PageTitle><p>글쓰기는 로그인 후 이용할 수 있습니다</p></div>
       </section>
     );
   }
+  // 수정은 언제나 작성자 본인만 — 폼에 내용을 채우기 전에 막아야 타인의 비밀글 내용이 잠깐이라도 보이지 않는다
+  if (editing && (!user || editing.authorId !== user.id)) {
+    return (
+      <section className="page">
+        <div className="page-head"><PageTitle>WRITE</PageTitle><p>수정은 작성자 본인만 할 수 있습니다</p></div>
+      </section>
+    );
+  }
 
-  const post = () => {
-    if (!title.trim() || !body.trim()) { toast('제목과 내용을 입력해 주세요'); return; }
+  const post = async () => {
+    if (!title.trim()) { toast('제목을 입력해 주세요'); return; }
+    let finalBody = body;
+    if (isPaint) {
+      const hasDrawing = canvasRef.current?.hasDrawing();
+      if (!editing && !paintBaseImage && !hasDrawing) { toast('그림을 그려 주세요'); return; }
+      const blob = await canvasRef.current?.exportBlob();
+      if (!blob) { toast('그림을 저장하지 못했습니다 — 브라우저를 새로고침한 뒤 다시 시도해 주세요'); return; }
+      const ref = await putBlob(blob);
+      finalBody = `<img src="${ref}" alt="${title.trim()}">`;
+    } else if (!body.trim()) {
+      toast('제목과 내용을 입력해 주세요'); return;
+    }
     if (editing) {
-      // 수정 — 작성자 본인만 (관리자도 타인 글은 삭제만, v1.9). 작성자/날짜/댓글/소속 게시판은 유지
-      if (editing.authorId !== user.id) { toast('수정은 작성자 본인만 할 수 있습니다'); return; }
+      // 수정 — 작성자 본인만, 그리고 언제나 로그인 상태여야 함 (게스트 글은 본인 확인 수단이 없어 수정 불가)
+      if (!user || editing.authorId !== user.id) { toast('수정은 작성자 본인만 할 수 있습니다'); return; }
       setPosts(posts.map(p => (p.id === editing.id ? {
         ...p,
-        title: title.trim(), body,
-        mode: writeMode === 'md' ? 'md' : 'html',
-        authored: writeMode === 'editor' ? 'editor' : undefined,
+        title: title.trim(), body: finalBody,
+        mode: isPaint ? 'html' : (writeMode === 'md' ? 'md' : 'html'),
+        authored: isPaint ? undefined : (writeMode === 'editor' ? 'editor' : undefined),
         category,
         secret, notice: isAdmin ? notice : p.notice,
-        tags: parseTags(tagsText),
         fold: foldType === 'none' ? null : { type: foldType, label: foldType === 'custom' ? foldLabel : undefined },
         thumbSrc, thumbCrop,
       } : p)));
@@ -104,16 +144,21 @@ function WriteInner() {
       router.push(`/board/${editing.id}`);
       return;
     }
+    // 로그인 상태면 회원 정보 그대로, 아니면(게스트 글쓰기 허용 게시판) 입력한 닉네임으로 —
+    // authorId ''는 기존 "게스트 댓글" 관례와 동일 (postStore.ts 주석 참고)
+    const authorName = user ? user.nickname : (guestName.trim() || '손님');
+    const authorIdVal = user ? user.id : '';
     const p: Post = {
-      id: newId(), title: title.trim(), body,
-      mode: writeMode === 'md' ? 'md' : 'html', category,
-      author: user.nickname, authorId: user.id, date: new Date().toISOString(),
-      secret, notice: isAdmin && notice,
-      tags: parseTags(tagsText),
+      id: newId(), title: title.trim(), body: finalBody,
+      mode: isPaint ? 'html' : (writeMode === 'md' ? 'md' : 'html'), category,
+      author: authorName, authorId: authorIdVal, date: new Date().toISOString(),
+      secret: user ? secret : false,   // 게스트 글은 본인 확인 수단이 없어 비밀글로 못 남김 — 작성자 본인도 나중에 못 열게 되는 걸 막기 위함
+      notice: isAdmin && notice,
       fold: foldType === 'none' ? null : { type: foldType, label: foldType === 'custom' ? foldLabel : undefined },
       comments: [],
       boardId: board.id,   // 소속 게시판 (5.2 다중 게시판)
       thumbSrc, thumbCrop,
+      originId: isPaint ? (usableOrigin?.id ?? undefined) : undefined,
     };
     setPosts([p, ...posts]);
     toast('등록되었습니다');
@@ -122,9 +167,10 @@ function WriteInner() {
 
   return (
     <section className="page">
-      {/* 큰 글씨 — 추가 게시판이면 그 이름(메뉴 관리 타이틀·이름이 우선), 누르면 그 게시판으로 복귀
-          (v2.0 사용자 제보 — 「글쓰기에서 큰제목을 눌러도 안 돌아가고, 제목도 원래 것이 뜬다」) */}
-      <div className="page-head"><PageTitle href={boardHref(board.id)}>{board.id === MAIN_BOARD_ID ? (editing ? 'EDIT' : 'WRITE') : board.name}</PageTitle><EditableDesc k="board-write-desc" def="에디터 / Markdown / HTML — 스크립트는 저장 시 자동 제거" /></div>
+      <div className="page-head">
+        <PageTitle>{isPaint ? (editing ? '그림 수정' : originId ? '이어그리기' : '새 그림 그리기') : (editing ? 'EDIT' : 'WRITE')}</PageTitle>
+        <EditableDesc k="board-write-desc" def="에디터 / Markdown / HTML — 스크립트는 저장 시 자동 제거" />
+      </div>
       <div className="write-grid">
         {/* 좌: 본문 */}
         <div className="panel" style={{ padding: 24 }}>
@@ -132,27 +178,40 @@ function WriteInner() {
             <label className="k-label" style={{ width: 60 }}>제목</label>
             <KInput value={title} onChange={e => setTitle(e.target.value)} style={{ flex: 1 }} />
           </div>
-          <div className="form-row">
-            <label className="k-label" style={{ width: 60 }}>모드</label>
-            <div className="mini-seg">
-              <button className={writeMode === 'editor' ? 'on' : ''} onClick={() => setWriteMode('editor')}>에디터</button>
-              <button className={writeMode === 'md' ? 'on' : ''} onClick={() => setWriteMode('md')}>Markdown</button>
-              <button className={writeMode === 'html' ? 'on' : ''} onClick={() => setWriteMode('html')}>HTML</button>
+          {!user && (
+            <div className="form-row">
+              <label className="k-label" style={{ width: 60 }}>닉네임</label>
+              <KInput value={guestName} onChange={e => setGuestName(e.target.value)}
+                placeholder="손님 (비워 두면 '손님'으로 등록)" style={{ flex: 1 }} />
             </div>
-          </div>
-          {writeMode === 'editor' ? (
-            <RichEditor value={body} onChange={setBody} placeholder='내용을 작성하세요 — 이미지 삽입 가능 (스크립트 불허 6.3)' />
+          )}
+          {isPaint ? (
+            <PaintCanvas ref={canvasRef} initialImageUrl={paintBaseImage} lockSize={!!paintBaseImage} />
           ) : (
             <>
-              <KTextarea
-                style={{ minHeight: 220, fontFamily: writeMode === 'html' ? 'ui-monospace, Consolas, monospace' : undefined }}
-                placeholder={writeMode === 'md' ? '마크다운으로 작성...' : '<div>HTML 코드를 작성/붙여넣기...</div>'}
-                value={body} onChange={e => setBody(e.target.value)}
-              />
-              <div className="preview-box" style={{ marginTop: 14 }}>
-                <div className="pv-label">PREVIEW — 실시간 미리보기</div>
-                <div className="post-body" dangerouslySetInnerHTML={{ __html: preview }} />
+              <div className="form-row">
+                <label className="k-label" style={{ width: 60 }}>모드</label>
+                <div className="mini-seg">
+                  <button className={writeMode === 'editor' ? 'on' : ''} onClick={() => setWriteMode('editor')}>에디터</button>
+                  <button className={writeMode === 'md' ? 'on' : ''} onClick={() => setWriteMode('md')}>Markdown</button>
+                  <button className={writeMode === 'html' ? 'on' : ''} onClick={() => setWriteMode('html')}>HTML</button>
+                </div>
               </div>
+              {writeMode === 'editor' ? (
+                <RichEditor value={body} onChange={setBody} placeholder='내용을 작성하세요 — 이미지 삽입 가능 (스크립트 불허 6.3)' />
+              ) : (
+                <>
+                  <KTextarea
+                    style={{ minHeight: 220, fontFamily: writeMode === 'html' ? 'ui-monospace, Consolas, monospace' : undefined }}
+                    placeholder={writeMode === 'md' ? '마크다운으로 작성...' : '<div>HTML 코드를 작성/붙여넣기...</div>'}
+                    value={body} onChange={e => setBody(e.target.value)}
+                  />
+                  <div className="preview-box" style={{ marginTop: 14 }}>
+                    <div className="pv-label">PREVIEW — 실시간 미리보기</div>
+                    <div className="post-body" dangerouslySetInnerHTML={{ __html: preview }} />
+                  </div>
+                </>
+              )}
             </>
           )}
           {/* 티켓 스킨 대표 이미지 — 본문에 삽입한 이미지 리스트에서 선택, 클릭 시 16:9 썸네일 위치 지정 (v1.9) */}
@@ -191,14 +250,10 @@ function WriteInner() {
               <KSelect minWidth={130} value={category} onChange={setCategory}
                 options={board.cats.map(x => ({ value: x.label, label: x.label }))} placeholder='말머리 선택' />
             </div>
-            {/* 태그 (v2.0 사용자 요청) — 목록의 작성자 왼쪽에 나열되고 검색에 걸린다 */}
-            <div className="form-row">
-              <label className="k-label" style={{ width: 60 }}>태그</label>
-              <KInput value={tagsText} onChange={e => setTagsText(e.target.value)}
-                placeholder="쉼표로 구분" style={{ flex: 1 }} />
-            </div>
             <div style={{ display: 'grid', gap: 9 }}>
-              <KCheck label="비밀글 (관리자와 나만 열람)" checked={secret} onChange={setSecret} />
+              {user
+                ? <KCheck label="비밀글 (관리자와 나만 열람)" checked={secret} onChange={setSecret} />
+                : <p className="hint" style={{ margin: 0 }}>손님 글쓰기는 나중에 다시 열어볼 본인 확인 수단이 없어 비밀글로 남길 수 없습니다</p>}
               {isAdmin && <KCheck label="공지로 고정" checked={notice} onChange={setNotice} />}
             </div>
           </div>

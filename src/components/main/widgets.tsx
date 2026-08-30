@@ -1,6 +1,8 @@
 'use client';
+
 // 메인 위젯 렌더러 (4.0) — DIARY/LATEST/UPCOMING 등은 해당 기능(2·3차) 전까지 데모 데이터
-import React, { useEffect, useRef, useState } from 'react';
+
+import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { WidgetConf, useMainStore, WIDGET_META, decoSlides } from '@/lib/mainStore';
 import { useAuth } from '@/lib/auth';
@@ -107,7 +109,7 @@ export function MenuListWidget() {
   const [menuSet, , menuLoaded] = useMenuSettings(); // 메뉴 관리 (5.2) 반영
   const { boards, loaded: boardsLoaded } = useBoards(); // 다중 게시판 (5.2)
   const { user: wUser, isAdmin: wIsAdmin } = useAuth(); // 공개범위 필터 (v1.9)
-  const { map: wSecMap } = useSections();      // 여러 개로 만든 섹션 (v2.0 — 빠져 있었다)
+  const { map: wSecMap } = useSections();   // 여러 개로 만든 섹션 (v2.0 — 빠져 있었다)
   const { links: wLinks } = useCustomLinks();  // 커스텀 링크 (v2.0)
   return (
     <div className="panel menu-list wgt-menu">
@@ -432,43 +434,16 @@ export function FreeTextWidget({ conf }: { conf: WidgetConf }) {
 /* ---------- 장식 이미지 — 패널 없이 이미지만 (장식용) ---------- */
 /** 비율 유지(안 잘림) 렌더 — cover(크롭)와 선택제 (v1.9 사용자 요청)
  *  둥근 모서리는 위젯 박스가 아니라 **이미지 크기**에 맞춰 적용 (v1.9 사용자 피드백 — 여백까지 둥글면 티가 안 남) */
-function ContainImg({ fileRef, rounded, onActivate }: {
-  fileRef: string; rounded: boolean; onActivate?: () => void;
-}) {
+function ContainImg({ fileRef, rounded }: { fileRef: string; rounded: boolean }) {
   const url = useBlobUrl(fileRef);
-  const imgRef = useRef<HTMLImageElement>(null);
-  // 투명 픽셀 판독용 캔버스 — 이미지마다 한 번만 그린다
-  const cacheRef = useRef<{ url: string; c: HTMLCanvasElement } | null>(null);
   if (!url) return null;
-  /* 클릭이 실제 그림 위인지 (v2.0 사용자 요청 — 「투명 영역은 클릭 영역이 아니게」).
-     장식 이미지는 배경이 투명한 PNG가 많다 — 빈 데를 눌러도 링크로 가면 이상하다.
-     픽셀의 투명도를 읽어 거의 투명하면 클릭으로 치지 않는다. 외부 주소 이미지처럼
-     판독이 막히면(캔버스 보안) 이미지 사각형 기준으로만 제한한다. */
-  const hitTest = (e: React.MouseEvent): boolean => {
-    const img = imgRef.current;
-    if (!img || !img.naturalWidth) return true;
-    const r = img.getBoundingClientRect();
-    const x = Math.floor((e.clientX - r.left) / r.width * img.naturalWidth);
-    const y = Math.floor((e.clientY - r.top) / r.height * img.naturalHeight);
-    try {
-      if (!cacheRef.current || cacheRef.current.url !== url) {
-        const c = document.createElement('canvas');
-        c.width = img.naturalWidth; c.height = img.naturalHeight;
-        c.getContext('2d', { willReadFrequently: true })!.drawImage(img, 0, 0);
-        cacheRef.current = { url, c };
-      }
-      return cacheRef.current.c.getContext('2d')!.getImageData(x, y, 1, 1).data[3] > 8;
-    } catch { return true; }
-  };
   return (
     <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img ref={imgRef} src={url} alt="" draggable={false}
-        onClick={e => { if (onActivate && hitTest(e)) onActivate(); }}
+      <img src={url} alt="" draggable={false}
         style={{
           maxWidth: '100%', maxHeight: '100%', width: 'auto', height: 'auto', display: 'block',
           borderRadius: rounded ? 'var(--radius)' : 0,
-          cursor: onActivate ? 'var(--cur-pointer,pointer)' : undefined,
         }} />
     </div>
   );
@@ -503,31 +478,19 @@ export function DecoWidget({ conf }: { conf: WidgetConf }) {
       else router.push(l);
     }
   };
-  // 직접 정한 크기 (v2.0 사용자 요청) — 비우면 지금까지처럼 자리(그리드 칸)를 따라간다
-  const wPx = conf.settings.wPx as number | undefined;
-  const hPx = conf.settings.hPx as number | undefined;
-  const canGo = !editOn && !!cur?.link;
   return (
     <div className="deco-wgt"
       style={{
-        position: 'relative', overflow: 'hidden',
-        width: wPx ? `${wPx}px` : '100%', maxWidth: '100%',
-        height: hPx ? `${hPx}px` : '100%', minHeight: hPx ? undefined : 80,
-        margin: wPx ? '0 auto' : undefined,
-        aspectRatio: conf.h == null && !hPx ? '1/1' : undefined, // 크기 동결 전 기본 정사각
+        position: 'relative', width: '100%', height: '100%', minHeight: 80, overflow: 'hidden',
+        aspectRatio: conf.h == null ? '1/1' : undefined, // 크기 동결 전 기본 정사각
         borderRadius: rounded ? 'var(--radius)' : 0,
-      }}>
-      {/* 클릭은 이미지 위에서만 (v2.0 사용자 요청) — 예전에는 위젯 칸 전체가 눌렸다.
-          꽉 채움은 이미지가 칸을 채우므로 그대로 칸 전체, 비율 유지는 그림 픽셀 기준(투명 제외) */}
+        cursor: !editOn && cur?.link ? 'var(--cur-pointer,pointer)' : undefined,
+      }}
+      onClick={onBody}>
       {cur
         ? (fit === 'contain'
-          ? <ContainImg key={cur.id} fileRef={cur.imgId} rounded={rounded} onActivate={canGo ? onBody : undefined} />
-          : (
-            <div style={{ position: 'absolute', inset: 0, cursor: canGo ? 'var(--cur-pointer,pointer)' : undefined }}
-              onClick={canGo ? onBody : undefined}>
-              <CroppedBlobImg key={cur.id} fileRef={cur.imgId} crop={cur.crop} ph="" />
-            </div>
-          ))
+          ? <ContainImg key={cur.id} fileRef={cur.imgId} rounded={rounded} />
+          : <CroppedBlobImg key={cur.id} fileRef={cur.imgId} crop={cur.crop} ph="" />)
         : (
           <div className="ph" style={{ position: 'absolute', inset: 0 }}>
             <span style={{ fontSize: 10 }}>{isAdmin ? 'DECO — 편집모드에서 우클릭 → 설정' : 'DECO'}</span>
@@ -615,7 +578,7 @@ export function ApplyWidget({ conf }: { conf: WidgetConf }) {
 
   return (
     /* 누르면 관리자든 아니든 신청자 페이지로 간다 (v2.0 사용자 요청).
-       설정은 편집모드에서 우클릭 > 설정으로만 — 목록을 보러 눌렀는데 관리 창이 뜨면 안 된다 */
+        설정은 편집모드에서 우클릭 > 설정으로만 — 목록을 보러 눌렀는데 관리 창이 뜨면 안 된다 */
     <div className="panel widget" style={{ cursor: 'var(--cur-pointer,pointer)' }}
       onClick={e => {
         if ((e.target as HTMLElement).closest('.modal-ov')) return;

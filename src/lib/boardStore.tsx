@@ -120,16 +120,16 @@ export function badgeFor(st: BoardSettings, p: { notice?: boolean; secret?: bool
 }
 
 /* ---------- 게시판 다중 생성 (5.2 v1.9) ---------- */
-// 같은 유형(리스트형) 게시판을 여러 개 — 게시판별 이름·말머리·권한·리스트 스킨(기본형/티켓형).
+// 같은 유형(리스트형) 게시판을 여러 개 — 게시판별 이름·말머리·권한·리스트 스킨(기본형/티켓형/그림판형).
 // 글은 ohome.board.v1 한 곳에 boardId로 구분 저장(게시판 삭제 시에도 글 데이터는 보존 — 3장 원칙).
-export type BoardSkin = 'list' | 'ticket';
+export type BoardSkin = 'list' | 'ticket' | 'paint';
 export type BoardPerm = 'guest' | 'member' | 'admin';
 
 export interface Board {
   id: string;              // 'main' = 기본 게시판 (삭제 불가)
   name: string;            // 메뉴·페이지 타이틀 표시명
   desc: string;            // 페이지 설명 기본 문구
-  skin: BoardSkin;         // 리스트 스킨 — 기본형 / 티켓형
+  skin: BoardSkin;         // 리스트 스킨 — 기본형 / 티켓형 / 그림판형
   permWrite: BoardPerm;    // 글쓰기 권한 (mock 단계에선 로그인 전제 — 로드뷰와 동일)
   permComment: BoardPerm;  // 댓글 권한
   cats: BoardBadge[];      // 게시판별 말머리
@@ -138,12 +138,32 @@ export interface Board {
 
 const BOARDS_KEY = 'ohome.boards.v1';
 export const MAIN_BOARD_ID = 'main';
+/** 그림판(오에카키) 게시판 — 내장 게시판이라 삭제 불가, 게시판 관리 UI 없이도 항상 존재 */
+export const PAINT_BOARD_ID = 'paint';
+
+/** 그림판 전용 말머리 — 다른 게시판 말머리와 마찬가지로 색·이름은 나중에 바꿀 수 있음 */
+export const PAINT_BOARD_CATS: BoardBadge[] = ['그림', '이어그리기', '낙서'].map(c => ({
+  id: `pcat-${c}`, label: c, bg: '#eef0f2', border: '#d7dae0', fg: '#5d636d',
+}));
+
+export const PAINT_BOARD: Board = {
+  id: PAINT_BOARD_ID, name: '그림판',
+  desc: '브라우저에서 바로 그림을 그려 올리는 게시판 — 다른 사람의 그림에 이어그리기도 가능',
+  skin: 'paint', permWrite: 'member', permComment: 'member', cats: PAINT_BOARD_CATS,
+};
 
 export const DEFAULT_BOARDS: Board[] = [{
   id: MAIN_BOARD_ID, name: '리스트',
   desc: 'MD / HTML 작성 지원 · 스크립트 실행 불허 · 말머리 · 비밀글 · 접기',
   skin: 'list', permWrite: 'member', permComment: 'member', cats: DEFAULT_BOARD_CATS,
-}];
+}, PAINT_BOARD];
+
+/** 그림판이 빠진 저장값에도 항상 붙여 준다 (기존 사이트가 코드만 업데이트해도 바로 보이도록) */
+// id가 겹치는 항목이 저장돼 있을 수 있어 방어적으로 한 번 정리한 뒤, 그림판이 없으면 붙인다
+const withPaintBoard = (list: Board[]): Board[] => {
+  const deduped = Array.from(new Map(list.map(b => [b.id, b])).values());
+  return deduped.some(b => b.id === PAINT_BOARD_ID) ? deduped : [...deduped, PAINT_BOARD];
+};
 
 export function useBoards(): {
   boards: Board[]; setBoards: (next: Board[]) => void; loaded: boolean;
@@ -154,13 +174,13 @@ export function useBoards(): {
   useEffect(() => {
     try {
       const raw = getRawSetting(BOARDS_KEY);
-      if (raw) setSt(JSON.parse(raw));
+      if (raw) setSt(withPaintBoard(JSON.parse(raw)));
       else {
         // 마이그레이션 — 구 전역 말머리(boardset.cats)를 기본 게시판으로 승계
         const old = getRawSetting(KEY);
         if (old) {
           const cats = (JSON.parse(old) as Partial<BoardSettings>).cats;
-          if (cats?.length) setSt([{ ...DEFAULT_BOARDS[0], cats }]);
+          if (cats?.length) setSt(withPaintBoard([{ ...DEFAULT_BOARDS[0], cats }]));
         }
       }
     } catch { /* 기본값 */ }
@@ -168,7 +188,7 @@ export function useBoards(): {
     const sync = () => {
       try {
         const raw = getRawSetting(BOARDS_KEY);
-        if (raw) setSt(JSON.parse(raw));
+        if (raw) setSt(withPaintBoard(JSON.parse(raw)));
       } catch { /* 무시 */ }
     };
     window.addEventListener('ohome-boards', sync);

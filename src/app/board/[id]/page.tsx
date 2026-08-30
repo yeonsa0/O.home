@@ -16,7 +16,6 @@ import { Modal, ConfirmModal } from '@/components/ui/Modal';
 import { GuestIdBar } from '@/components/ui/GuestId';
 import { useToast } from '@/components/ui/Toast';
 import { PageTitle } from '@/components/ui/PageText';
-import { pushNotif } from '@/lib/notifStore';
 
 const FOLD_LABEL = { spoiler: '스포일러 주의', adult: '수위 주의' };
 
@@ -35,6 +34,9 @@ export default function BoardDetailPage() {
   const [replyTo, setReplyTo] = useState<string | null>(null);
   const [delAsk, setDelAsk] = useState(false);
   const [gName, setGName] = useState('');                       // 게스트 닉네임 (방문자 댓글 허용 시)
+  const [gPw, setGPw] = useState('');                           // 게스트 비밀번호
+  const [pwAsk, setPwAsk] = useState<Comment | null>(null);     // 게스트 댓글 삭제 — 비밀번호 확인
+  const [pwInput, setPwInput] = useState('');
 
   const post = posts.find(p => p.id === id);
   /* 이 글이 속한 곳이 비공개면 주소로 들어와도 열리지 않게 (v2.0 사용자 요청).
@@ -83,38 +85,12 @@ export default function BoardDetailPage() {
   const addComment = () => {
     if (!canComment) { toast('댓글은 로그인 후 작성할 수 있습니다'); return; }
     if (!cmt.trim()) return;
-    if (guestMode && !gName.trim()) { toast('닉네임을 입력해 주세요'); return; }
+    if (guestMode && (!gName.trim() || !gPw)) { toast('게스트는 닉네임과 비밀번호를 입력해 주세요'); return; }
     const base = { id: newId(), text: cmt.trim(), date: new Date().toISOString(), parentId: replyTo ?? undefined };
     const c: CommentRow = user
       ? { ...base, target: 'post', targetId: post.id, author: user.nickname, authorId: user.id }
-      : { ...base, target: 'post', targetId: post.id, author: gName.trim(), authorId: '' };
+      : { ...base, target: 'post', targetId: post.id, author: gName.trim(), authorId: '', guestPw: gPw };
     setCmtRows([...cmtRows, c]);
-    /* 알림 (v2.0 포크 제보 — 「댓글을 달아도 알림이 안 와요」): 게시판 댓글은 여태 알림을
-       **만들지도 않았다** (로드비·방명록·역극만 있었다). 글쓴이에게, 답글이면 그 댓글 주인에게도. */
-    const me = user?.id ?? '';
-    if (post.authorId && post.authorId !== me) {
-      pushNotif({
-        type: 'comment', toUserId: post.authorId, href: `/board/${post.id}`,
-        title: `「${post.title}」에 새 댓글`, body: `${c.author} — ${c.text.slice(0, 50)}`,
-      });
-    }
-    if (replyTo) {
-      /* 뿌리 댓글 주인만이 아니라 **그 대화에 답글을 단 전원**에게 (v2.0 포크 제보 —
-         관리자가 자기 뿌리 댓글에 답하면, 사이에 답글을 단 회원이 아무것도 못 받았다).
-         글쓴이는 위에서 이미 받았으므로 뺀다. */
-      const rootAuthor = comments.find(x => x.id === replyTo)?.authorId;
-      const seen = new Set<string>();
-      for (const t of comments.filter(x => x.id === replyTo || x.parentId === replyTo)) {
-        const to = t.authorId;
-        if (!to || to === me || to === post.authorId || seen.has(to)) continue;
-        seen.add(to);
-        pushNotif({
-          type: 'comment', toUserId: to, href: `/board/${post.id}`,
-          title: to === rootAuthor ? '내 댓글에 답글이 달렸습니다' : '참여한 댓글에 새 답글이 달렸습니다',
-          body: `${c.author} — ${c.text.slice(0, 50)}`,
-        });
-      }
-    }
     setCmt(''); setReplyTo(null);
   };
 
@@ -124,6 +100,13 @@ export default function BoardDetailPage() {
     if (cmtRows.some(gone)) setCmtRows(cmtRows.filter(x => !gone(x)));
     if (post.comments.some(gone)) update({ comments: post.comments.filter(x => !gone(x)) });
   };
+  const confirmPw = () => {
+    if (!pwAsk) return;
+    if (pwInput !== pwAsk.guestPw) { toast('비밀번호가 일치하지 않습니다'); return; }
+    removeComment(pwAsk);
+    setPwAsk(null);
+  };
+
   const roots = comments.filter(c => !c.parentId);
   const childrenOf = (pid: string) => comments.filter(c => c.parentId === pid);
 
@@ -136,10 +119,12 @@ export default function BoardDetailPage() {
           {replyTo === c.id ? '답글 취소' : '답글'}
         </small>
       )}
-      {/* 손님 댓글은 관리자만 지운다 (v2.0 사용자 확정) — 서버가 그렇게밖에 못 받는다 */}
-      {(isAdmin || (user && c.authorId === user.id)) && (
+      {(isAdmin || (user && c.authorId === user.id) || (!c.authorId && c.guestPw)) && (
         <small style={{ cursor: 'var(--cur-pointer,pointer)', marginLeft: 8 }}
-          onClick={() => removeComment(c)}>
+          onClick={() => {
+            if (isAdmin || (user && c.authorId === user.id)) removeComment(c);
+            else { setPwInput(''); setPwAsk(c); }   // 게스트 댓글 — 비밀번호 확인
+          }}>
           삭제
         </small>
       )}
@@ -153,6 +138,10 @@ export default function BoardDetailPage() {
         <PageTitle href={boardHref(board.id)}>{boardTitle}</PageTitle>
         <p>{post.notice ? '공지 · ' : `${post.category} · `}{post.author} · {fmtDate(post.date)}</p>
         <div className="head-actions">
+          {/* 그림판 — 이 그림 위에 이어서 그리기 (누구나 글쓰기 권한만 있으면) */}
+          {board.skin === 'paint' && allow(board.permWrite) && !!user && (
+            <button className="btn btn-dark" onClick={() => router.push(`/board/write?b=${board.id}&origin=${post.id}`)}>🖌 이어그리기</button>
+          )}
           {/* 수정은 작성자 본인만 — 관리자도 타인 글은 삭제만 (v1.9) */}
           {isAuthor && (
             <button className="btn btn-dark" onClick={() => router.push(`/board/write?edit=${post.id}`)}>EDIT</button>
@@ -169,10 +158,6 @@ export default function BoardDetailPage() {
         </h2>
         <p style={{ fontSize: 11, color: 'var(--faint)', marginBottom: 18 }}>
           {post.author} · {fmtDate(post.date)} · {post.mode.toUpperCase()}
-          {/* 태그 (v2.0 사용자 요청) — 목록과 같은 표기 */}
-          {(post.tags ?? []).map(t => (
-            <span key={t} style={{ marginLeft: 7, color: 'color-mix(in srgb,var(--accent) 65%,var(--faint))' }}>#{t}</span>
-          ))}
         </p>
 
         {/* 접기 (6.2) — 흐림 커버, 클릭 시 표시 */}
@@ -209,7 +194,7 @@ export default function BoardDetailPage() {
         {canComment ? (
           /* 게스트 작성(방문자 허용) — 구분선 아래 GUEST 바 + 입력줄 세로 배치 */
           <div className={`cmt-input ${guestMode ? 'guest' : ''}`}>
-            {guestMode && <GuestIdBar name={gName} onName={setGName} />}
+            {guestMode && <GuestIdBar name={gName} pw={gPw} onName={setGName} onPw={setGPw} />}
             <div className="ci-row" style={guestMode ? undefined : { display: 'contents' }}>
               <KInput
                 placeholder={replyTo ? '답글 작성...' : '댓글 남기기...'}
@@ -225,6 +210,17 @@ export default function BoardDetailPage() {
           </div>
         )}
       </div>
+
+      {/* 게스트 댓글 삭제 — 작성 시 입력한 비밀번호 확인 */}
+      <Modal open={pwAsk !== null} onClose={() => setPwAsk(null)} small title="댓글 삭제"
+        actions={<>
+          <button className="btn btn-ghost" onClick={() => setPwAsk(null)}>CANCEL</button>
+          <button className="btn btn-dark" onClick={confirmPw}>OK</button>
+        </>}>
+        <KInput placeholder="작성 시 입력한 비밀번호" type="password" value={pwInput} autoFocus
+          onChange={e => setPwInput(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') confirmPw(); }} />
+      </Modal>
 
       <ConfirmModal open={delAsk} title="글을 삭제하시겠습니까?" body="삭제한 글은 복구할 수 없습니다."
         onClose={() => setDelAsk(false)}

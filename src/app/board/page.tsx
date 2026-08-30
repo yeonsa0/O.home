@@ -45,8 +45,8 @@ function BoardInner() {
   const [prevBid, setPrevBid] = useState(bid);
   if (prevBid !== bid) { setPrevBid(bid); setCat('전체'); setQ(''); setPage(1); }
 
-  // 권한 3단계 — mock 단계에선 로그인 전제 (로드뷰 4.10과 동일 규칙)
-  const allow = (p: BoardPerm) => (p === 'admin' ? isAdmin : p === 'member' ? !!user : true);
+  // 권한 3단계 — 그림판(paint) 스킨은 비로그인도 작성 허용
+  const allow = (p: BoardPerm) => (board.skin === 'paint' ? true : (p === 'admin' ? isAdmin : p === 'member' ? !!user : true));
 
   const visible = useMemo(() => {
     let list = posts.filter(p => (p.boardId ?? MAIN_BOARD_ID) === board.id);
@@ -57,7 +57,6 @@ function BoardInner() {
       list = list.filter(p =>
         p.title.toLowerCase().includes(k) ||
         p.author.toLowerCase().includes(k) ||
-        (p.tags ?? []).some(t => t.toLowerCase().includes(k)) ||   // 태그 검색 (v2.0 사용자 요청)
         (!p.secret && p.body.toLowerCase().includes(k)));
     }
     // 공지 상단 고정 + 최신순
@@ -93,13 +92,45 @@ function BoardInner() {
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <SearchBar onSearch={v => { setQ(v); setPage(1); }} />
-          {allow(board.permWrite) && !!user && (
-            <button className="btn btn-dark" onClick={() => router.push(`/board/write?b=${board.id}`)}>✎ WRITE</button>
+          {allow(board.permWrite) && (
+            <button className="btn btn-dark" onClick={() => router.push(`/board/write?b=${board.id}`)}>
+              {board.skin === 'paint' ? '🖌 새 그림 그리기' : '✎ WRITE'}
+            </button>
           )}
         </div>
       </div>
 
-      {board.skin === 'ticket' ? (
+      {board.skin === 'paint' ? (
+        /* 그림판 스킨 — 이미지 카드 그리드 피드 (paint.zip 원본의 세로 피드를 카드 그리드로) */
+        <div className="paint-feed">
+          {pageList.map(p => {
+            const img = canRead(p) ? firstImage(p.body) : null;
+            return (
+              <div className="paint-card" key={p.id} onClick={() => { if (canRead(p)) router.push(`/board/${p.id}`); }}>
+                <div className="paint-card-img">
+                  {img
+                    ? <img src={img} alt={p.title} loading="lazy" />
+                    : <span style={{ fontSize: 20 }}>{canRead(p) ? '🖼' : '🔒'}</span>}
+                </div>
+                <div className="paint-card-body">
+                  <div className="paint-card-title">
+                    {canRead(p) ? <>{p.secret && '🔒 '}{p.title}</> : '🔒 비밀글입니다'}
+                  </div>
+                  <div className="paint-card-meta">
+                    <span>{p.author}</span>
+                    <span>{cmtCount(p) > 0 ? `💬 ${cmtCount(p)}` : fmtDate(p.date)}</span>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+          {pageList.length === 0 && (
+            <div className="panel" style={{ padding: 36, textAlign: 'center', fontSize: 12.5, color: 'var(--faint)', gridColumn: '1/-1' }}>
+              아직 그림이 없어요 — [🖌 새 그림 그리기] 로 첫 그림을 남겨보세요!
+            </div>
+          )}
+        </div>
+      ) : board.skin === 'ticket' ? (
         /* 티켓형 스킨 (5.2 v1.9) — 왼쪽 썸네일(본문 첫 이미지) + 절취선 + 오른쪽 글 정보 */
         <div style={board.fg ? { color: board.fg } : undefined}>
           {pageList.map(p => {
@@ -136,22 +167,15 @@ function BoardInner() {
           {pageList.map(p => (
             <div className="brow" key={p.id} onClick={() => { if (canRead(p)) router.push(`/board/${p.id}`); }}>
               <span className="cat">{postBadge(p)}</span>
-              {/* 제목 칸 안에서 태그를 오른쪽 끝(=작성자 바로 왼쪽)에 정렬 (v2.0 사용자 요청) —
-                  칸을 따로 만들면 행마다 그리드가 독립이라 작성자 열이 태그 길이만큼 어긋난다 */}
-              <div className="tcell">
-                {canRead(p) ? (
-                  <b>
-                    {p.secret && '🔒 '}{p.title}
-                    {cmtCount(p) > 0 && <span className="cmt">{cmtCount(p)}</span>}
-                    {p.fold && <span style={{ ...boardBadgeStyle(boardSet.system[2]), marginLeft: 6 }}>{boardSet.system[2].label}</span>}
-                  </b>
-                ) : (
-                  <b style={{ color: 'var(--faint)' }}>🔒 비밀글입니다</b>
-                )}
-                {canRead(p) && (p.tags ?? []).length > 0 && (
-                  <span className="tags">{(p.tags ?? []).map(t => <i key={t}>#{t}</i>)}</span>
-                )}
-              </div>
+              {canRead(p) ? (
+                <b>
+                  {p.secret && '🔒 '}{p.title}
+                  {cmtCount(p) > 0 && <span className="cmt">{cmtCount(p)}</span>}
+                  {p.fold && <span style={{ ...boardBadgeStyle(boardSet.system[2]), marginLeft: 6 }}>{boardSet.system[2].label}</span>}
+                </b>
+              ) : (
+                <b style={{ color: 'var(--faint)' }}>🔒 비밀글입니다</b>
+              )}
               <span className="who">{p.author}</span>
               <span className="dt">{fmtDate(p.date)}</span>
             </div>
