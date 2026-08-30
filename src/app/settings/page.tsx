@@ -1009,34 +1009,6 @@ function MemoPane() {
 }
 
 /** 마우스 커서 탭 (5.1 v1.1) — 상태별 이미지 + 핫스팟 + 전체 on/off */
-/** 커서 이미지 규격 맞추기 (v1.9 사용자 발견) — 브라우저는 128px를 넘는 이미지를 커서로 쓰지 못하고
- *  그냥 무시해 버려서, 커스텀 커서가 곳곳에서 시스템 커서로 되돌아가 "깨져 보이는" 원인이 된다.
- *  .cur/.ani는 자체 포맷이라 그대로 두고, 일반 이미지만 128px 이내로 줄인다.
- *  (이 함수가 빠져 있어서 커서 업로드 자체가 에러로 실패하던 문제 — 되살림) */
-async function fitCursorImage(f: File): Promise<{ blob: Blob; resized: boolean }> {
-  if (/\.(cur|ani)$/i.test(f.name)) return { blob: f, resized: false };
-  const url = URL.createObjectURL(f);
-  try {
-    const img = await new Promise<HTMLImageElement>((ok, no) => {
-      const i = new Image();
-      i.onload = () => ok(i); i.onerror = no; i.src = url;
-    });
-    const max = Math.max(img.width, img.height);
-    if (max <= 128) return { blob: f, resized: false };
-    const k = 128 / max;
-    const c = document.createElement('canvas');
-    c.width = Math.max(1, Math.round(img.width * k));
-    c.height = Math.max(1, Math.round(img.height * k));
-    c.getContext('2d')!.drawImage(img, 0, 0, c.width, c.height);
-    const blob = await new Promise<Blob | null>(ok => c.toBlob(ok, 'image/png'));
-    return blob ? { blob, resized: true } : { blob: f, resized: false };
-  } catch {
-    return { blob: f, resized: false };
-  } finally {
-    URL.revokeObjectURL(url);
-  }
-}
-
 function CursorRow({ state }: { state: CursorState }) {
   const [st, patch] = useCursorSettings();
   const toast = useToast();
