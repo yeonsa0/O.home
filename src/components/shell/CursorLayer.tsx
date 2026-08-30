@@ -19,8 +19,7 @@ const VAR_NAME: Partial<Record<CursorState, string>> = {
 
 // 상태 → 적용 셀렉터 (커서 폴백 포함)
 const RULES: Record<CursorState, { sel: string; fallback: string }> = {
-  // ★ body 전체 바탕 화면에 커서가 확실히 박히도록 셀렉터 강화 및 전역 적용
-  default: { sel: 'body, html, .page, .panel', fallback: 'auto' },
+  default: { sel: 'body, .page, .panel', fallback: 'auto' },
   pointer: {
     sel: [
       'a', 'button', 'label', '.btn', '.tag', '.pill', '.k-select', '.k-toggle', '.k-check', '.k-radio',
@@ -79,11 +78,7 @@ export function CursorLayer() {
           const rule = RULES[key];
           // .cur는 내장 핫스팟 사용 — CSS 좌표를 붙이면 무시되는 브라우저가 있어 생략
           const hs = isCur(buf) ? '' : ` ${entry.hx} ${entry.hy}`;
-          
-          // ★ default 상태(바탕화면)도 다른 포인트 커서들처럼 !important를 부여하여 시스템 커서와의 싸움에서 승리하도록 수정
-          const imp = key === 'default' ? ' !important' : ' !important';
-          staticParts.push(`${rule.sel}{cursor:url("${url}")${hs}, ${rule.fallback}${imp}}`);
-          
+          staticParts.push(`${rule.sel}{cursor:url("${url}")${hs}, ${rule.fallback} !important}`);
           const vn = VAR_NAME[key];
           if (vn) staticParts.push(`:root{${vn}:url("${url}")${hs}, ${rule.fallback}}`);
         }
