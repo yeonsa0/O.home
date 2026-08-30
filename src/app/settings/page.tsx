@@ -1049,8 +1049,7 @@ function CursorRow({ state }: { state: CursorState }) {
             const f = e.target.files?.[0];
             e.target.value = '';
             if (!f) return;
-            const blob = f;
-const resized = false;
+            const { blob, resized } = await fitCursorImage(f);
             setEntry({ imgId: await putBlob(blob) });
             if (resized) toast('커서로 쓸 수 있게 128px 이내로 줄였습니다 (원본이 너무 컸음)');
           }} />
