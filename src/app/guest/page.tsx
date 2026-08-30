@@ -24,7 +24,7 @@ export default function GuestbookPage() {
   const [delFor, setDelFor] = useState<string | null>(null);
   const [delPw, setDelPw] = useState('');
   
-  // 비밀글 해제(열람)를 위한 상태 (localStorage 연동으로 새로고침해도 유지되게 하면 더 좋습니다)
+  // 비밀글 해제(열람)를 위한 상태
   const [unlockedIds, setUnlockedIds] = useState<string[]>([]);
   const [readPwFor, setReadPwFor] = useState<string | null>(null);
   const [readPw, setReadPw] = useState('');
@@ -36,7 +36,7 @@ export default function GuestbookPage() {
       id: newId(),
       author: user ? user.nickname : gName.trim(),
       authorId: user?.id,
-      guestPw: user ? undefined : gPw, // 게스트 비밀번호 저장
+      guestPw: user ? undefined : gPw,
       body: body.trim(), secret, date: new Date().toISOString(), reply: null,
     };
     setEntries([e, ...entries]);
@@ -52,14 +52,13 @@ export default function GuestbookPage() {
     }
   };
 
-  // 열람 권한: 관리자이거나, 로그인한 본인 글이거나, 비밀번호를 풀어 해제된 ID 목록에 있거나, 비밀글이 아닐 때
+  // 열람 권한: 비밀글이 아니거나, 관리자이거나, 로그인한 본인 글이거나, 비밀번호가 해제된 경우
   const canRead = (e: GuestEntry) => !e.secret || isAdmin || (e.authorId && e.authorId === user?.id) || unlockedIds.includes(e.id);
 
   const doDelete = () => {
     const e = entries.find(x => x.id === delFor);
     if (!e) return;
     
-    // 삭제 권한 체크: 관리자이거나, 로그인한 작성자 본인이거나, 게스트 비밀번호가 일치하는 경우
     const isMyPostByLogin = e.authorId && e.authorId === user?.id;
     const isMyPostByGuestPw = !e.authorId && e.guestPw && e.guestPw === delPw;
     const allowed = isAdmin || isMyPostByLogin || isMyPostByGuestPw;
@@ -119,7 +118,6 @@ export default function GuestbookPage() {
       <div className="panel flush">
         {visible.slice(start, start + PER_GB).map(e => {
           const readable = canRead(e);
-          // 삭제 권한 판단 (로그인 유저 본인, 관리자, 또는 게스트)
           const canDelete = isAdmin || (e.authorId && e.authorId === user?.id) || !e.authorId;
 
           return (
@@ -201,12 +199,13 @@ export default function GuestbookPage() {
           <button className="btn btn-accent" onClick={doDelete}>DELETE</button>
         </>}>
         {(() => {
-          const e = entries.find(x => x.id === delFor);
-          const needPw = e && !e.authorId && !isAdmin;
-          return needPw
-            ? <KInput placeholder="작성 시 입력한 비밀번호" type="password" value={delPw} onChange={ev => setDelPw(ev.target.value)} />
-            : <p style={{ fontSize: 13, color: 'var(--sub)' }}>이 방명록을 삭제할까요?</p>;
-        })}
+          const targetEntry = entries.find(x => x.id === delFor);
+          const isGuestPost = targetEntry && !targetEntry.authorId && !isAdmin;
+          if (isGuestPost) {
+            return <KInput placeholder="작성 시 입력한 비밀번호" type="password" value={delPw} onChange={ev => setDelPw(ev.target.value)} />;
+          }
+          return <p style={{ fontSize: 13, color: 'var(--sub)' }}>이 방명록을 삭제할까요?</p>;
+        })()}
       </Modal>
     </section>
   );
