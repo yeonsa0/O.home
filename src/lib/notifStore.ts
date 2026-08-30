@@ -152,6 +152,37 @@ function mirrorToServer(prev: Notif[], next: Notif[]) {
     .catch(() => { /* 규칙 미적용 포크 등 — 기기 목록은 이미 반영됨 */ });
 }
 
+/**
+ * 알림 전달 자가진단 (v2.0 포크 제보 「여전히 안 와요」 대응) — 어디가 막혔는지 스스로 확인.
+ * 내 앞으로 시험 알림을 **서버에** 적고, 서버에서 되읽어 본 뒤 지운다.
+ * 결과 문구가 곧 안내다: 저장이 막히면 만들기 규칙, 읽기가 막히면 읽기 규칙 문제.
+ */
+export async function selfTestNotif(userId: string): Promise<string> {
+  if (!isServerMode()) return '브라우저 저장 모드입니다 — 알림은 이 브라우저 안에서만 동작합니다';
+  const now = new Date().toISOString();
+  const row = asRow({
+    id: newId(), type: 'comment', toUserId: userId, title: '알림 전달 확인',
+    href: '/', date: now, read: true, readAt: now,
+  });
+  try {
+    await syncList('notifications', [], [row], currentUserId());
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return `서버 저장 실패 — ${msg.slice(0, 80)} · 설치 SQL 재실행(수파베이스) 또는 Firestore 규칙 재부착(파이어베이스)이 필요합니다`;
+  }
+  try {
+    const rows = await fetchList('notifications') as unknown as Notif[];
+    const found = rows.some(r => r.id === row.id);
+    try { await syncList('notifications', [row], [], currentUserId()); } catch { /* 시험 행 정리 실패는 무시 */ }
+    return found
+      ? '정상 — 알림이 서버에 저장되고 읽혔습니다. 남이 남긴 알림은 접속·벨 열기 때 도착합니다'
+      : '저장은 됐지만 읽기에 안 보입니다 — 보안 규칙(읽기)을 최신으로 다시 적용해 주세요';
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return `서버 읽기 실패 — ${msg.slice(0, 80)} · 보안 규칙을 최신으로 다시 적용해 주세요`;
+  }
+}
+
 let lastSync = 0;
 /**
  * 서버에 쌓인 내 알림 받아 가기 (v2.0) — 접속·벨 열기·실시간 신호에서 부른다.

@@ -118,11 +118,14 @@ export function MenuListWidget() {
           <div key={m.label} className={`mgrp ${open === m.label ? 'open' : ''}`}>
             <a onClick={() => setOpen(o => (o === m.label ? null : m.label))}>{m.label}</a>
             <div className="msub">
-              {m.children.map(c => <a key={c.href} onClick={() => router.push(c.href)}>{c.label}</a>)}
+              {/* 커스텀 링크의 외부 주소는 새 창 (v2.0) — 상단 메뉴와 같은 규칙 */}
+              {m.children.map(c => (
+                <a key={c.href} onClick={() => (/^https?:\/\//.test(c.href) ? window.open(c.href, '_blank') : router.push(c.href))}>{c.label}</a>
+              ))}
             </div>
           </div>
         ) : (
-          <a key={m.label} onClick={() => router.push(m.href!)}>{m.label}</a>
+          <a key={m.label} onClick={() => (/^https?:\/\//.test(m.href!) ? window.open(m.href!, '_blank') : router.push(m.href!))}>{m.label}</a>
         )
       )}
     </div>

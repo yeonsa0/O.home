@@ -322,23 +322,24 @@ export function CharEditForm({ initial, onSave, onCancel, auMode, existingIds }:
                   { value: 'private', label: '나만보기' },
                 ]} />
             )}
+            {/* 설명은 드롭다운 **위에** (v2.0 사용자 요청 — 자관 폼과 같은 배치) */}
+            <p className="hint" style={{ margin: '2px 0 0' }}>이름 폰트 — 리스트·상세 이름에 적용</p>
             <KSelect value={fontId} onChange={setFontId}
               options={fonts.map(f => ({
                 value: f.id,
                 label: <span style={{ fontFamily: f.family }}>{f.name}</span>,
               }))} />
-            <p className="hint" style={{ margin: 0 }}>이름 폰트 — 리스트·상세 이름에 적용</p>
             {/* 이름 길이가 제각각이라 자동으로 줄이면 어중간해진다 — 캐릭터마다 직접 정한다 (v2.0) */}
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
               <span className="k-label" style={{ margin: 0, flex: 1 }}>상세 이름 크기</span>
               <KStep value={nameSize} onChange={setNameSize} min={14} max={72} step={1} suffix="px" />
             </div>
+            <p className="hint" style={{ margin: '2px 0 0' }}>본문 폰트 — 프로필 정보·소개 텍스트에 적용</p>
             <KSelect value={bodyFontId} onChange={setBodyFontId}
               options={fonts.map(f => ({
                 value: f.id,
                 label: <span style={{ fontFamily: f.family }}>{f.name}</span>,
               }))} />
-            <p className="hint" style={{ margin: 0 }}>본문 폰트 — 프로필 정보·소개 텍스트에 적용</p>
           </div>
         </div>
         <div className="form-actions">

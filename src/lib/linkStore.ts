@@ -11,7 +11,6 @@
  */
 import { useCallback, useEffect, useReducer } from 'react';
 import { getRawSetting, setSetting } from './settingStore';
-import { newId } from './postStore';
 import type { ExtraEntry } from './menuStore';
 
 const KEY = 'ohome.links.v1';
@@ -25,11 +24,12 @@ export interface CustomLink {
 }
 
 /**
- * 입력을 사이트 안 경로로 (v2.0).
+ * 입력을 메뉴에 걸 주소로 (v2.0).
  *
- * 풀주소를 붙여 넣어도 **경로만** 남긴다 — 오리진이 같을 때만 자르면(normalizeInternalLink)
- * 도메인을 바꾸거나 다른 기기에서 붙여 넣었을 때 외부 링크가 되어 새 창이 뜬다.
- * 이 기능은 「내부 이동」이 목적이므로 언제나 경로를 취한다.
+ * **내 홈 주소만** 경로로 줄인다 (v2.0 사용자 발견) — 예전에는 풀주소를 무조건 경로로
+ * 잘라서, **다른 홈**(같은 vercel 배포 방식의 남의 홈 등) 주소를 붙여 넣으면 도메인이
+ * 떨어져 나가 내 홈의 존재하지 않는 페이지로 가 버렸다. 다른 오리진의 풀주소는 그대로
+ * 남기고, 메뉴에서 누르면 새 창으로 연다(TopBar가 처리).
  */
 export function toInternalPath(v: string): string {
   const s = v.trim();
@@ -37,7 +37,10 @@ export function toInternalPath(v: string): string {
   try {
     if (/^https?:\/\//i.test(s)) {
       const u = new URL(s);
-      return u.pathname + u.search + u.hash;
+      if (typeof window !== 'undefined' && u.origin === window.location.origin) {
+        return u.pathname + u.search + u.hash;
+      }
+      return u.href;   // 남의 사이트 — 도메인을 떼면 안 된다
     }
   } catch { /* 파싱 실패 — 아래에서 경로로 다룬다 */ }
   return s.startsWith('/') ? s : `/${s}`;
@@ -60,7 +63,6 @@ function notify() { try { window.dispatchEvent(new Event(EVT)); } catch { /* 무
 export function useCustomLinks(): {
   links: CustomLink[];
   setLinks: (next: CustomLink[]) => void;
-  add: () => void;
   loaded: boolean;
 } {
   const [, force] = useReducer((x: number) => x + 1, 0);
@@ -78,13 +80,7 @@ export function useCustomLinks(): {
     notify();
   }, []);
 
-  const add = useCallback(() => {
-    cache = [...cache, { id: newId(), name: '새 링크', href: '/' }];
-    try { setSetting(KEY, cache); } catch { /* 무시 */ }
-    notify();
-  }, []);
-
-  return { links: cache, setLinks, add, loaded };
+  return { links: cache, setLinks, loaded };
 }
 
 /** 메뉴에 얹을 형태로 — 주소가 비어 있는 것은 뺀다(메뉴에 눌러도 아무 데도 안 가는 항목이 생긴다).

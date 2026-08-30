@@ -221,6 +221,9 @@ export interface RelAuMember {
   nameSize?: number;
   quoteColor?: string;
   quoteMarkColor?: string;
+  /** 멤버 카드 얼굴칸 위치 — AU마다 따로 (v2.0 사용자 제보 — 원본에서 바꾸면 AU도 같이 바뀌었다).
+   *  안 정한 AU는 자관 기본(faceCrop)을 그대로 따른다 */
+  faceCrop?: import('@/components/ui/CropEditor').CropValue;
 }
 
 /** 이 AU에서 이 멤버를 어떻게 보여 줄지 — AU에 정해 둔 값이 있으면 그것, 없으면 자관 기본.

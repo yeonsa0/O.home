@@ -17,7 +17,7 @@ import { useToast } from '@/components/ui/Toast';
 import { KToggle } from '@/components/ui/Kit';
 import {
   Notif, NotifType, NOTIF_EVENT, NOTIF_TYPE_LABEL,
-  readNotifs, markRead, markAllRead, clearReadNotifs, notifSettings, setNotifSetting, syncNotifs,
+  readNotifs, markRead, markAllRead, clearReadNotifs, notifSettings, setNotifSetting, syncNotifs, selfTestNotif,
 } from '@/lib/notifStore';
 import { subscribeTable } from '@/lib/db';
 
@@ -93,6 +93,8 @@ export function TopBar() {
   // 편집모드 중에는 이동 전에 종료 확인 (v1.8)
   // 지금 보고 있는 메뉴를 다시 누르면 그 페이지를 새로 불러옴 — 다시 접속하는 느낌 (v1.9 사용자 요청)
   const nav = (href: string) => {
+    // 커스텀 링크에 다른 사이트 풀주소를 걸 수 있다 (v2.0) — 외부는 새 창으로
+    if (/^https?:\/\//.test(href)) { window.open(href, '_blank'); return; }
     if (guardNav(href)) return;
     // 같은 메뉴 재클릭 — 브라우저 새로고침 대신 페이지만 처음 상태로 다시 그림 (BGM이 끊기지 않게, v1.9).
     // **쿼리까지 비교해야 한다** (v2.0 사용자 문의로 발견) — 경로만 보면 /board?b=2 에서 /board 를
@@ -273,6 +275,11 @@ export function TopBar() {
                       <KToggle checked={mySet[k]} onChange={v => setNotifSetting(user.id, k, v)} />
                     </label>
                   ))}
+                {/* 전달 자가진단 (v2.0) — 서버 저장→읽기를 실제로 해 보고 결과를 알려 준다 */}
+                <button className="all" style={{ marginTop: 2 }}
+                  onClick={async () => { toast(await selfTestNotif(user.id)); void syncNotifs(user.id, true); }}>
+                  알림 전달 확인
+                </button>
               </div>
             )}
           </div>

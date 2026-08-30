@@ -1562,6 +1562,9 @@ body.edit-on .main-grid.gridlines .wgt{outline-offset:0}
 }
 /* 본문 렌더 (MD/HTML 공통) */
 .post-body{font-size:calc(14.5px*var(--fs,1));line-height:1.85;color:#2c3037;word-break:break-word}
+/* 빈 문단도 한 줄 높이 유지 (v2.0 사용자 제보 — 「엔터가 잘 안 먹힘」).
+   에디터의 빈 줄은 <p></p>로 저장되는데 그대로는 높이가 0이라 발행 글에서 줄이 사라진다 */
+.post-body p:empty::after,.prose p:empty::after,.html-body p:empty::after{content:"\00a0"}
 .post-body h1,.post-body h2,.post-body h3{margin:18px 0 8px;line-height:1.4}
 .post-body h1{font-size:calc(22px*var(--fs,1))}.post-body h2{font-size:calc(19px*var(--fs,1))}.post-body h3{font-size:calc(16.5px*var(--fs,1))}
 .post-body p{margin:8px 0}

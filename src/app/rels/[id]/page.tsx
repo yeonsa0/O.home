@@ -752,6 +752,16 @@ export default function RelDetailPage() {
 
   /** 얼굴칸(1:1) 크롭 다시 잡기 — 캐릭터의 3:4 썸네일과 별개로 이 자관에만 저장 (v2.0) */
   const saveFaceCrop = (cid: string, c: CropValue) => {
+    /* AU를 보는 중이면 **그 AU에만** 저장 (v2.0 사용자 제보 — 원본에서 위치를 바꾸면 AU도
+       같이 바뀌었다). 표시는 auMember가 mset 값을 우선하므로, 정하지 않은 AU는 원본을 따른다 */
+    if (!isBaseAu && au) {
+      updateRel({
+        aus: rel.aus.map(a => (a.id === au.id
+          ? { ...a, mset: { ...a.mset, [cid]: { ...a.mset?.[cid], faceCrop: c } } }
+          : a)),
+      });
+      return;
+    }
     updateRel({ members: rel.members.map(m => (m.charId === cid ? { ...m, faceCrop: c } : m)) });
     setFaceEdit(null);
   };
