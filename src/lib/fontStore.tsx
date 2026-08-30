@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 // 폰트 라이브러리 (5.1) — 내장(구글폰트) + 웹폰트 URL 등록
 // 내장 폰트도 삭제·수정 가능 — 원하는 폰트만 남길 수 있음. 삭제된 폰트를 쓰던 기존 데이터는
 // familyOf가 전체 풀에서 계속 해석하므로 표시가 깨지지 않음.
@@ -342,4 +342,3 @@ export function useFonts(): FontCtx {
   if (!ctx) throw new Error('useFonts must be used within FontProvider');
   return ctx;
 }
- 
