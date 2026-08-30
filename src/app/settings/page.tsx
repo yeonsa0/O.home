@@ -1676,3 +1676,41 @@ export default function SettingsPage() {
   // useSearchParams는 Suspense 경계 필요 (Next App Router)
   return <Suspense fallback={<section className="page" />}><SettingsInner /></Suspense>;
 }
+// 이미지를 받아와서 128px 이내로 리사이징해주는 헬퍼 함수
+async function fitCursorImage(file: File): Promise<{ blob: Blob; resized: boolean }> {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        let width = img.width;
+        let height = img.height;
+        let resized = false;
+        const MAX_SIZE = 128;
+
+        if (width > MAX_SIZE || height > MAX_SIZE) {
+          resized = true;
+          if (width > height) {
+            height = Math.round((height * MAX_SIZE) / width);
+            width = MAX_SIZE;
+          } else {
+            width = Math.round((width * MAX_SIZE) / height);
+            height = MAX_SIZE;
+          }
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx?.drawImage(img, 0, 0, width, height);
+
+        canvas.toBlob((blob) => {
+          resolve({ blob: blob || file, resized });
+        }, file.type || 'image/png');
+      };
+      img.src = e.target?.result as string;
+    };
+    reader.readAsDataURL(file);
+  });
+}
