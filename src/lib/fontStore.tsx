@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 // 폰트 라이브러리 (5.1) — 내장(구글폰트) + 웹폰트 URL 등록
 // 내장 폰트도 삭제·수정 가능 — 원하는 폰트만 남길 수 있음. 삭제된 폰트를 쓰던 기존 데이터는
 // familyOf가 전체 풀에서 계속 해석하므로 표시가 깨지지 않음.
@@ -170,6 +170,14 @@ export function FontProvider({ children }: { children: React.ReactNode }) {
     pool.forEach(f => {
       if (!f.fileId || loadedFiles.current.has(f.id)) return;
       loadedFiles.current.add(f.id);
+      /* 서버 모드의 파일은 저장소 공개 URL — **폰트는 CORS 강제 자원**이라 저장소가 허용 헤더를
+         안 주면 직접 로드가 조용히 거부된다 (v2.0 원본 개발자 제보 — 「등록한 폰트가 적용이
+         안 돼요」, 화면 전체가 폴백 세리프로 남던 원인). 같은 출처 중계(/api/font)로 받아 CORS를 피한다 */
+      if (/^https?:/.test(f.fileId)) {
+        const face = new FontFace(f.family, `url("/api/font?u=${encodeURIComponent(f.fileId)}")`);
+        face.load().then(fc => document.fonts.add(fc)).catch(() => { /* 접근 불가 — 폴백 렌더 */ });
+        return;
+      }
       getBlob(f.fileId).then(b => {
         if (!b) return;
         const face = new FontFace(f.family, `url(${URL.createObjectURL(b)})`);
