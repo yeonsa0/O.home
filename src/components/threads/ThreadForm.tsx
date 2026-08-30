@@ -88,7 +88,7 @@ export function ThreadForm({ editId }: { editId?: string }) {
       setWorks([{ ...w, ...secStamp(sec.id) }, ...works]);
       toast('타래가 시작되었습니다');
     }
-    router.push('/threads' + secQuery(secId));
+    router.push('/threads' + secQuery('threads', secId));
   };
 
   return (
@@ -158,7 +158,7 @@ export function ThreadForm({ editId }: { editId?: string }) {
             </div>
           </div>
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 6 }}>
-            <button className="btn btn-ghost" onClick={() => router.push('/threads' + secQuery(secId))}>CANCEL</button>
+            <button className="btn btn-ghost" onClick={() => router.push('/threads' + secQuery('threads', secId))}>CANCEL</button>
             <button className="btn btn-dark" onClick={save}>{orig ? 'SAVE' : 'ADD'}</button>
           </div>
         </div>

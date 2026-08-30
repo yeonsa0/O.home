@@ -54,8 +54,10 @@ export interface Backend {
   updateProfile(patch: { nickname?: string; avatarUrl?: string | null; avatarColor?: string | null }): Promise<{ ok: boolean; error?: string }>;
   /** 첫 계정을 이 홈의 관리자로 등록 (관리자가 아직 없을 때만) */
   claimOwner(): Promise<{ ok: boolean; error?: string }>;
-  /** 가입 회원 목록 — 역극 참여자 선택·회원 관리 화면용 */
-  listMembers(): Promise<{ id: string; nickname: string; role: 'admin' | 'member'; email?: string }[]>;
+  /** 가입 회원 목록 — 역극 참여자 선택·회원 관리 화면용.
+   *  avatarUrl도 내준다 (v2.0 사용자 제보) — 이미지 정리가 콘텐츠·설정만 훑던 시절, 프로필 사진은
+   *  어디에도 참조가 안 잡혀 「아무도 안 쓰는 파일」로 지워졌다. */
+  listMembers(): Promise<{ id: string; nickname: string; role: 'admin' | 'member'; email?: string; avatarUrl?: string }[]>;
 
   /* ---- 목록(콘텐츠) ---- */
   fetchList<T extends ListItem>(coll: string): Promise<T[]>;
@@ -117,23 +119,34 @@ export const COLLECTION_OF: Record<string, string> = {
   // 역극 발화 — 방 안이 아니라 자기 문서로 (v2.0). 같은 이유로, 방 안에 두면 말할 때마다
   // 방을 UPDATE 해야 해서 남이 만든 방에서 참여자가 발화할 수 없었다
   'ohome.rpmsgs.v1': 'rp_messages',
+  // 알림 — 기기 보관이던 것을 서버로 (v2.0 포크 제보 「알림이 안 와요」).
+  // 행 주인(authorId)을 받는 사람으로 적어, 받는 사람 계정이 어느 기기에서나 받아 간다
+  'ohome.notif.v1': 'notifications',
 };
 
 export const CONTENT_COLLECTIONS = Object.values(COLLECTION_OF);
 
-/** 항목 배열 비교 — 두 백엔드가 공유하는 diff (바뀐 것만 저장) */
+/** 항목 배열 비교 — 두 백엔드가 공유하는 diff (바뀐 것만 저장).
+ *
+ *  **내용이 그대로고 자리만 바뀐 항목은 moves로 분리한다** (v2.0 포크 제보 — 큰 로그 본문 저장 실패).
+ *  새 항목을 목록 맨 앞에 끼우면 기존 항목 전부의 자리가 밀리는데, 이걸 전부 updates로 취급하면
+ *  **본문까지 통째로 다시 전송**된다. TRPG 로그 본문(문서당 최대 700KB)이 쌓인 홈에서는 그 합이
+ *  Firestore 쓰기 한 번의 최대 크기(10MiB)를 넘어 **새 로그의 본문 저장만 조용히 실패**했다 —
+ *  티켓은 생기는데 본문은 「비어 있습니다」가 되는 원인. moves는 sort 값만 고쳐 저장하면 된다. */
 export function diffList<T extends ListItem>(prev: T[], next: T[]) {
   const prevMap = new Map(prev.map((it, i) => [it.id, { it, i }]));
   const nextIds = new Set(next.map(it => it.id));
   const inserts: { item: T; sort: number }[] = [];
   const updates: { item: T; sort: number }[] = [];
+  const moves: { id: string; sort: number }[] = [];
   next.forEach((it, i) => {
     const before = prevMap.get(it.id);
     if (!before) inserts.push({ item: it, sort: i });
-    else if (before.i !== i || JSON.stringify(before.it) !== JSON.stringify(it)) updates.push({ item: it, sort: i });
+    else if (JSON.stringify(before.it) !== JSON.stringify(it)) updates.push({ item: it, sort: i });
+    else if (before.i !== i) moves.push({ id: it.id, sort: i });
   });
   const deletes = prev.filter(it => !nextIds.has(it.id)).map(it => it.id);
-  return { inserts, updates, deletes };
+  return { inserts, updates, moves, deletes };
 }
 
 /** 항목에서 권한 판단에 쓰는 값 뽑기.

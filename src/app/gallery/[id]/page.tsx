@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useHrefBlock } from '@/components/shell/MenuGuard';
-import { sectionHref, MAIN_SEC } from '@/lib/sectionStore';
+import { sectionHref, MAIN_SEC, useSectionTitle } from '@/lib/sectionStore';
 import { useAuth } from '@/lib/auth';
 import { useLocalList, fmtDate } from '@/lib/postStore';
 import { BackupPost, BACKUP_SEED } from '@/lib/galleryStore';
@@ -29,12 +29,14 @@ export default function BackupDetailPage() {
      글 주소에는 섹션이 없어 MenuGuard가 못 막는다 — 글을 읽어 소속을 알아낸 여기서 판정한다.
      **다른 early return보다 먼저 불러야 한다**(훅이므로 렌더마다 개수가 같아야 한다) */
   const blocked = useHrefBlock(p && sectionHref('gallery', p.secId ?? MAIN_SEC));
+  // 큰 글씨 — 추가 섹션이면 그 이름, 눌렀을 때도 그 목록으로 (v2.0 사용자 제보)
+  const tt = useSectionTitle('gallery', p?.secId, 'GALLERY');
   if (blocked) return blocked;
   if (!loaded) return <section className="page" />;
   if (!p || (p.visibility === 'private' && !isAdmin) || (p.visibility === 'member' && !user)) {
     return (
       <section className="page">
-        <div className="page-head"><PageTitle>GALLERY</PageTitle><p>게시물을 찾을 수 없거나 열람 권한이 없습니다</p></div>
+        <div className="page-head"><PageTitle href={tt.href}>{tt.title}</PageTitle><p>게시물을 찾을 수 없거나 열람 권한이 없습니다</p></div>
       </section>
     );
   }
@@ -65,8 +67,12 @@ export default function BackupDetailPage() {
   return (
     <section className="page">
       <div className="page-head">
-        <PageTitle>GALLERY</PageTitle>
-        <p>{p.category} · {p.author} · {fmtDate(p.date)}{p.madeDate ? ` · 제작 ${p.madeDate}` : ''}</p>
+        <PageTitle href={tt.href}>{tt.title}</PageTitle>
+        <p>
+          {p.category} · {p.author} · {fmtDate(p.date)}{p.madeDate ? ` · 제작 ${p.madeDate}` : ''}
+          {/* 태그 (v2.0 사용자 요청) — 목록과 같은 표기 */}
+          {(p.tags ?? []).map(t => <i key={t} className="tag-in">#{t}</i>)}
+        </p>
         <div className="head-actions">
           {canManage && <button className="btn btn-dark" onClick={() => router.push(`/gallery/${p.id}/edit`)}>EDIT</button>}
           {canManage && <button className="btn btn-dark" onClick={() => setDelAsk(true)}>DELETE</button>}
@@ -145,7 +151,7 @@ export default function BackupDetailPage() {
       <ConfirmModal open={delAsk} title="게시물을 삭제하시겠습니까?" body="삭제한 게시물은 복구할 수 없습니다."
         onClose={() => setDelAsk(false)}
         buttons={[
-          { label: 'DELETE', kind: 'accent', onClick: () => { setPosts(posts.filter(x => x.id !== p.id)); router.push('/gallery'); } },
+          { label: 'DELETE', kind: 'accent', onClick: () => { setPosts(posts.filter(x => x.id !== p.id)); router.push(tt.href); } },
           { label: 'CANCEL', kind: 'ghost', onClick: () => setDelAsk(false) },
         ]} />
     </section>

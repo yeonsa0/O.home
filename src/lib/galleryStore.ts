@@ -44,6 +44,8 @@ export interface BackupPost {
   authorId: string;
   visibility: Visibility;
   fold: { type: FoldType; label?: string } | null;
+  /** 태그 (v2.0 사용자 요청) — 목록·카드에 나열되고 검색에 걸린다 */
+  tags?: string[];
 }
 
 export const BACKUP_SEED: BackupPost[] = [];

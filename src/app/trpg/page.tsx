@@ -217,7 +217,10 @@ function TrpgPageInner() {
       ...secStamp(sec.id),   // 소속 (v2.0) — 본문 문서도 비공개 판정을 받게
     };
     setLogs([log, ...logs]);
-    setBodies([body, ...bodies]);
+    // 본문 문서는 **뒤에** 붙인다 (v2.0 포크 제보) — 앞에 끼우면 기존 본문 전체의 자리가 밀려
+    // 재저장 대상이 되는데, 큰 본문이 쌓인 홈에서는 그 합이 한 번의 쓰기 한도를 넘어 저장이 실패했다.
+    // 본문은 id로만 찾으므로 순서는 아무 의미가 없다.
+    setBodies([...bodies, body]);
     setAddOpen(false);
     setNNo(''); setNVis('public'); setNPw(''); setNListHidden(false); setNTitle(''); setNCatch(''); setNWriter(''); setNWith(''); setNBody(''); setNFileName(''); setNDate(''); setNFile(null);
     setNThumb(null); setNThumbUrl(''); setNThumbCrop(undefined);

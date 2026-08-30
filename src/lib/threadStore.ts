@@ -13,6 +13,9 @@ export interface ThreadPost {
   images: string[];          // IndexedDB 파일 id — 최대 4장 (1장=와이드, 2~4장=격자)
   phList?: string[];         // 데모 플레이스홀더 (시드 전용)
   date: string;              // ISO 작성 시각
+  /** 접기 (v2.0 사용자 요청 — 스포일러 1차 쿠션). 게시판 글 접기(6.2)와 같은 모양:
+   *  spoiler/adult는 정해진 문구, custom은 label을 그대로 보여 준다. 없으면 바로 보인다. */
+  fold?: { type: 'spoiler' | 'adult' | 'custom'; label?: string } | null;
 }
 
 export interface ThreadWork {

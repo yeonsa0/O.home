@@ -33,6 +33,10 @@ export interface Character {
   tabs: CharTab[];       // 기본 정보 외 추가 탭
   basicHtml: string;     // 기본 정보 탭의 소개 본문 (HTML)
   visibility: Visibility;
+  /** 페이지 주소 별명 (v2.0 사용자 요청) — /chars/{별명}. 만들 때 정하는 주소(id)와 달리
+   *  **나중에 수정 화면에서 바꿀 수 있다.** 참조(자관 멤버·권한 등)는 언제나 id로 저장되므로
+   *  바꿔도 아무것도 끊어지지 않고, 옛 주소(id)로도 계속 열린다. */
+  slug?: string;
   /** 어느 캐릭터 목록 것인지 (v2.0 사용자 요청) — 없으면 기본 목록.
    *  **자관·역극이 캐릭터를 찾을 때는 소속을 보지 않는다** — 목록 화면에서만 갈린다 */
   secId?: string;
@@ -322,10 +326,17 @@ export interface RelAu {
   headerCrop?: import("@/components/ui/CropEditor").CropValue;
   // AU별 페이지 테마 (v1.9 사용자 확정) — 미지정이면 base(원본) 테마 따라가기
   theme?: { mode: 'site' | 'custom'; color?: string; tone?: 'dark' | 'light' };
+  /** 상세 하단의 역극/로그 연동 리스트 숨김 (v2.0 사용자 요청) — AU마다 따로.
+   *  원본(base)의 설정은 aus의 base 항목에 담긴다 */
+  hideRp?: boolean;
+  hideLog?: boolean;
 }
 
 export interface Relation {
   id: string;
+  /** 페이지 주소 별명 (v2.0 사용자 요청) — /rels/{별명}. 나중에 수정 화면에서 바꿀 수 있다.
+   *  참조(AU 프로필 키·로그 연동 등)는 언제나 id로 저장되므로 바꿔도 끊어지지 않는다. */
+  slug?: string;
   name: string;
   catchphrase: string;
   kind?: 'pair' | 'multi';         // 페어(2인) / 다인(3인+) — 등록 시 선택
@@ -385,3 +396,12 @@ export const CHAR_SEED: Character[] = [];
 export const REL_SEED: Relation[] = [];
 
 export const findChar = (chars: Character[], id: string) => chars.find(c => c.id === id);
+
+/* ---------- 페이지 주소 별명 (v2.0 사용자 요청) ---------- */
+/** 주소로 항목 찾기 — id로도, 별명으로도 열린다 (별명을 바꿔도 옛 주소가 살아 있게) */
+export const findByKey = <T extends { id: string; slug?: string }>(list: T[], key: string) =>
+  list.find(x => x.id === key || (x.slug ?? '') === key);
+/** 이 캐릭터의 주소 — 별명을 정했으면 그것, 아니면 id */
+export const charPath = (c: { id: string; slug?: string }) => `/chars/${c.slug?.trim() || c.id}`;
+/** 이 자관의 주소 — 별명을 정했으면 그것, 아니면 id */
+export const relPath = (r: { id: string; slug?: string }) => `/rels/${r.slug?.trim() || r.id}`;

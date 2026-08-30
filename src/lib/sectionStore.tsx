@@ -153,6 +153,19 @@ export function useSectionParam(kind: SectionKind): { id: string; name: string; 
   return { id: found.id, name: found.name, items };
 }
 
+/** 상세·작성 페이지의 큰 글씨 + 큰 글씨를 눌렀을 때 돌아갈 주소 (v2.0 사용자 제보 —
+ *  추가 섹션의 상세로 가면 원래 페이지 제목(CHARACTERS 등)이 떴고, 눌러도 리스트로 안 갔다).
+ *  추가 섹션이면 그 이름을, 기본 섹션이면 def(페이지 원래 제목)를 준다.
+ *  PageTitle에 href로 함께 넘기면 메뉴 관리에서 정한 타이틀·이름이 이보다 우선한다. */
+export function useSectionTitle(
+  kind: SectionKind, secId: string | undefined, def: string,
+): { title: string; href: string } {
+  const { list } = useSections();
+  const id = secId ?? MAIN_SEC;
+  const name = id === MAIN_SEC ? null : list(kind).find(s => s.id === id)?.name;
+  return { title: name || def, href: sectionHref(kind, id) };
+}
+
 /** 목록에서 이 섹션 것만 (v2.0) — 예전 데이터는 전부 기본 섹션 소속 */
 export function filterSection<T extends { secId?: string }>(rows: T[], cur: string): T[] {
   return rows.filter(r => inSection(r.secId, cur));
@@ -176,8 +189,22 @@ export function sectionSetter<T extends { secId?: string }>(
   };
 }
 
-/** 새로 만들기 페이지로 넘길 때 지금 섹션을 달고 간다 — 기본 섹션이면 아무것도 안 붙인다 */
-export const secQuery = (id: string) => (id === MAIN_SEC ? '' : `?s=${id}`);
+/** 새로 만들기 페이지로 넘길 때 지금 섹션을 달고 간다 — 기본 섹션이면 아무것도 안 붙인다.
+ *  **별명(slug)을 정했으면 별명으로** (v2.0 사용자 제보) — 메뉴 주소는 별명인데 여기서 만든
+ *  주소만 id면, 같은 페이지인데 주소 문자열이 달라 메뉴 타이틀·이름 찾기가 전부 빗나간다. */
+export const secQuery = (kind: SectionKind, id: string) =>
+  (id === MAIN_SEC ? '' : `?s=${secKeyOf(kind, id)}`);
+
+/** 주소의 ?s= 값을 그 섹션의 대표 표기(별명 우선)로 통일 (v2.0 사용자 제보).
+ *  옛 공유 주소·구버전이 만든 id 주소로 들어와도 메뉴 타이틀·이름이 제대로 잡히게 —
+ *  pathname이 섹션 목록 페이지가 아니면 받은 값을 그대로 돌려준다. */
+export function canonSecKey(pathname: string, key: string): string {
+  const kind = SECTION_KINDS.find(k => SECTION_META[k].href === pathname);
+  if (!kind) return key;
+  load();
+  const hit = (cache[kind] ?? []).find(s => s.id === key || (s.slug ?? '') === key);
+  return hit ? (hit.slug?.trim() || hit.id) : key;
+}
 
 /** 새 항목에 찍을 소속 — 기본 섹션은 표시를 남기지 않는다(예전 데이터와 같은 모습) */
 export const secStamp = (id: string): { secId?: string } => (id === MAIN_SEC ? {} : { secId: id });

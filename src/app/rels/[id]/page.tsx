@@ -13,6 +13,7 @@ import {
   auMember, auStyle, fullShadow, hasRelGrant,
   RelAu, RelCpTag, charWithAu, charGrant,
   QaAnswerRow, QA_KEY, QA_SEED, MergedAnswer, answersFor,
+  findByKey, charPath,
 } from '@/lib/charStore';
 import { RelQuestionSet, RELQ_SEED, RELQ_KEY, CP_LABEL } from '@/lib/relqStore';
 import { putBlob } from '@/lib/blobStore';
@@ -20,7 +21,7 @@ import { GrantsEditor } from '@/components/chars/GrantsEditor';
 import { TrpgLog, TRPG_SEED } from '@/lib/galleryStore';
 import { RpRoom, RP_SEED } from '@/lib/rpStore';
 import { useFonts } from '@/lib/fontStore';
-import { Tip, KInput, KTextarea, KSelect, KRadio } from '@/components/ui/Kit';
+import { Tip, KInput, KTextarea, KSelect, KRadio, KCheck } from '@/components/ui/Kit';
 import { Modal, ConfirmModal, useConfirmDelete } from '@/components/ui/Modal';
 import { ColorField } from '@/components/ui/ColorField';
 import { withAlpha } from '@/lib/color';
@@ -260,6 +261,21 @@ export default function RelDetailPage() {
       window.removeEventListener('keydown', key);
     };
   }, [tlCtx]);
+  // 질문 우클릭 메뉴 (v2.0 사용자 요청) — 바로 되돌리지 않고 메뉴를 거쳐 확인 모달로
+  const [qaCtx, setQaCtx] = useState<{ x: number; y: number; no: number } | null>(null);
+  useEffect(() => {
+    if (!qaCtx) return;
+    const close = () => setQaCtx(null);
+    const key = (e: KeyboardEvent) => { if (e.key === 'Escape') setQaCtx(null); };
+    window.addEventListener('click', close);
+    window.addEventListener('scroll', close, true);
+    window.addEventListener('keydown', key);
+    return () => {
+      window.removeEventListener('click', close);
+      window.removeEventListener('scroll', close, true);
+      window.removeEventListener('keydown', key);
+    };
+  }, [qaCtx]);
   // 답변 우클릭 메뉴 (v2.0) — 수정·부연·삭제
   const [ansCtx, setAnsCtx] = useState<{ x: number; y: number; idx: number } | null>(null);
   useEffect(() => {
@@ -328,7 +344,8 @@ export default function RelDetailPage() {
   const [auDelAsk, setAuDelAsk] = useState<string | null>(null);  // AU 삭제 확인 (v2.0 — 자관 삭제와 별개)
   const del = useConfirmDelete();                // 멤버·타임라인 등 개별 삭제 확인
 
-  const rel = rels.find(r => r.id === id);
+  // 별명 주소로도 열린다 (v2.0 사용자 요청 — 주소를 나중에 바꿔도 옛 주소가 살아 있게)
+  const rel = findByKey(rels, id);
 
   // 자관별 페이지 테마 (4.18 방식) — 별도 테마컬러면 홈 전체 팔레트를 임시 전환, 벗어나면 원복.
   // AU별 (v1.9): AU에 테마를 지정했으면 그것, 미지정이면 base(원본) 테마 따라가기
@@ -434,7 +451,11 @@ export default function RelDetailPage() {
   };
   // AU 선택 중 그 캐릭터의 AU 프로필 미등록 여부 + 캐릭터 페이지 링크(au 유지) (v1.9)
   const auUnregOf = (cid: string) => !!auCharKey && !findChar(chars, cid)?.auProfiles?.[auCharKey];
-  const charHref = (cid: string) => (auCharKey ? `/chars/${cid}?au=${encodeURIComponent(auCharKey)}` : `/chars/${cid}`);
+  // 캐릭터 별명 주소 우선 (v2.0) — 없으면 id 그대로
+  const charHref = (cid: string) => {
+    const base = charPath(charOf(cid) ?? { id: cid });
+    return auCharKey ? `${base}?au=${encodeURIComponent(auCharKey)}` : base;
+  };
   const sideOf = (cid: string) => (isDuo && rel?.members[1]?.charId === cid ? 'r' : 'l');
 
   // AU 전환으로 QUESTIONS 섹션이 없는 AU에 오면 타임라인 탭으로 (v1.9)
@@ -719,10 +740,14 @@ export default function RelDetailPage() {
       : [asAu(rel.members[0] ?? null), asAu(rel.members[1] ?? null)])
     : [];
 
-  /** 이 멤버를 반대쪽 자리로 (좌 ↔ 우) */
+  /** 이 멤버를 반대쪽 자리로 (좌 ↔ 우).
+   *  오른쪽을 왼쪽으로 옮길 때는 **반대쪽 캐릭터를 오른쪽으로 지정**한다 (v2.0 사용자 제보) —
+   *  예전에는 지정을 지우기만 해서, 등록 순서상 원래 오른쪽이던 캐릭터(보통 두 번째로 넣은
+   *  상대 캐릭터)는 지워도 그대로 오른쪽이라 아무 일도 일어나지 않았다. */
   const moveSide = (cid: string) => {
     const nowRight = pairSlots[1]?.charId === cid;
-    updateRel({ pairRight: nowRight ? undefined : cid });
+    const other = rel.members.find(m => m.charId !== cid)?.charId;
+    updateRel({ pairRight: nowRight ? other : cid });
   };
 
   /** 얼굴칸(1:1) 크롭 다시 잡기 — 캐릭터의 3:4 썸네일과 별개로 이 자관에만 저장 (v2.0) */
@@ -1200,11 +1225,12 @@ export default function RelDetailPage() {
               </div>
               <div className="qa-scroll">
                 {qaFiltered.map(q => (
-                  /* 우클릭 — 이 질문을 대기 리스트로 되돌린다 (v2.0 사용자 요청).
+                  /* 우클릭 — 메뉴에서 「리스트로 되돌리기」를 고르면 확인 모달이 뜬다 (v2.0 사용자 요청 —
+                     바로 모달이 뜨는 것보다 한 단계 거치는 쪽이 실수로 우클릭했을 때 안전하다).
                      지금 보고 있는 질문이 아니어도 리스트에서 바로 고를 수 있다 */
                   <div key={q.no} className={`qa-item ${curQa?.no === q.no ? 'on' : ''}`} onClick={() => setQaNo(q.no)}
                     data-tip={isAdmin ? '우클릭 — 리스트로 되돌리기' : undefined}
-                    onContextMenu={e => { if (!isAdmin) return; e.preventDefault(); returnQuestion(q); }}>
+                    onContextMenu={e => { if (!isAdmin) return; e.preventDefault(); setQaCtx({ x: e.clientX, y: e.clientY, no: q.no }); }}>
                     <b>Q.{String(q.no).padStart(3, '0')} {q.q}</b>
                     <small>{q.date.slice(5).replace('-', '.')} · 답변 {answersOf(q.no).length}</small>
                   </div>
@@ -1215,9 +1241,12 @@ export default function RelDetailPage() {
         )}
       </div>
 
-      {/* 역극 · 로그 연동 리스트 (4.5) — 역극: 내 참여 방 + 공개 전환된 완결 방 */}
+      {/* 역극 · 로그 연동 리스트 (4.5) — 역극: 내 참여 방 + 공개 전환된 완결 방.
+          AU마다 숨길 수 있다 (v2.0 사용자 요청 — AU 관리의 체크박스). 둘 다 숨기면 칸 자체가 없다 */}
+      {!(au?.hideRp && au?.hideLog) && (
       <div className="g2" style={{ marginTop: 16 }}>
-        <div className="panel widget" style={{ margin: 0 }}>
+        {!au?.hideRp && (
+        <div className="panel widget" style={{ margin: 0, ...(au?.hideLog ? { gridColumn: '1/-1' } : null) }}>
           <h4>역극 <span className="more" onClick={() => router.push('/rp')}>더보기 ›</span></h4>
           {relRooms.length > 0 ? relRooms.map(rm => (
             <div key={rm.id} className="dday-row" style={{ cursor: 'var(--cur-pointer,pointer)' }} onClick={() => router.push('/rp')}>
@@ -1230,7 +1259,9 @@ export default function RelDetailPage() {
             <p className="hint" style={{ margin: 0 }}>이 자관 기반으로 진행된 역극이 여기에 표시됩니다</p>
           )}
         </div>
-        <div className="panel widget" style={{ margin: 0 }}>
+        )}
+        {!au?.hideLog && (
+        <div className="panel widget" style={{ margin: 0, ...(au?.hideRp ? { gridColumn: '1/-1' } : null) }}>
           <h4>로그 <span className="more" onClick={() => router.push('/trpg')}>더보기 ›</span></h4>
           {relLogs.length > 0 ? relLogs.map(l => (
             <div key={l.id} className="dday-row" style={{ cursor: 'var(--cur-pointer,pointer)' }} onClick={() => router.push(`/trpg/${l.id}`)}>
@@ -1240,7 +1271,9 @@ export default function RelDetailPage() {
             </div>
           )) : <p className="hint" style={{ margin: 0 }}>연동된 로그가 없습니다 — 로그 등록 시 자관을 선택하면 여기에 표시</p>}
         </div>
+        )}
       </div>
+      )}
 
       {/* ---------- 멤버 추가 모달 ---------- */}
       <Modal open={memberOpen} onClose={() => setMemberOpen(false)} small title="멤버 추가"
@@ -1371,12 +1404,40 @@ export default function RelDetailPage() {
                   ))}
                 </div>
                 {a.id !== 'base' && (
-                  <span className="fx" style={{ flexShrink: 0 }}
-                    onClick={() => del.ask(`AU 「${a.label}」를 삭제하시겠습니까?`, () => {
-                      updateRel({ aus: rel.aus.filter(x => x.id !== a.id) });
-                      if (auId === a.id) setAuId('base');
-                    }, '이 AU의 일러·타임라인·문답이 함께 삭제되며 복구할 수 없습니다.')}>✕</span>
+                  <>
+                    {/* 순서 변경 (v2.0 사용자 요청) — 원본(base)은 항상 맨 앞 고정 */}
+                    <span className="fx" style={{ flexShrink: 0, opacity: rel.aus.indexOf(a) <= 1 ? .3 : 1 }}
+                      data-tip="위로"
+                      onClick={() => {
+                        const i = rel.aus.findIndex(x => x.id === a.id);
+                        if (i <= 1) return;   // 0 = base
+                        const next = [...rel.aus];
+                        [next[i - 1], next[i]] = [next[i], next[i - 1]];
+                        updateRel({ aus: next });
+                      }}>▲</span>
+                    <span className="fx" style={{ flexShrink: 0, opacity: rel.aus.indexOf(a) >= rel.aus.length - 1 ? .3 : 1 }}
+                      data-tip="아래로"
+                      onClick={() => {
+                        const i = rel.aus.findIndex(x => x.id === a.id);
+                        if (i < 1 || i >= rel.aus.length - 1) return;
+                        const next = [...rel.aus];
+                        [next[i], next[i + 1]] = [next[i + 1], next[i]];
+                        updateRel({ aus: next });
+                      }}>▼</span>
+                    <span className="fx" style={{ flexShrink: 0 }}
+                      onClick={() => del.ask(`AU 「${a.label}」를 삭제하시겠습니까?`, () => {
+                        updateRel({ aus: rel.aus.filter(x => x.id !== a.id) });
+                        if (auId === a.id) setAuId('base');
+                      }, '이 AU의 일러·타임라인·문답이 함께 삭제되며 복구할 수 없습니다.')}>✕</span>
+                  </>
                 )}
+              </div>
+              {/* 상세 하단의 연동 리스트 숨김 (v2.0 사용자 요청) — 이 AU를 보는 동안만 적용 */}
+              <div style={{ display: 'flex', gap: 16 }}>
+                <KCheck label={<span style={{ fontSize: 11.5 }}>역극 리스트 숨김</span>} checked={!!a.hideRp}
+                  onChange={v => updateRel({ aus: rel.aus.map(x => (x.id === a.id ? { ...x, hideRp: v || undefined } : x)) })} />
+                <KCheck label={<span style={{ fontSize: 11.5 }}>로그 리스트 숨김</span>} checked={!!a.hideLog}
+                  onChange={v => updateRel({ aus: rel.aus.map(x => (x.id === a.id ? { ...x, hideLog: v || undefined } : x)) })} />
               </div>
             </div>
           ))}
@@ -1515,6 +1576,19 @@ export default function RelDetailPage() {
             del.ask('타임라인 항목을 삭제하시겠습니까?',
               () => patchAuData({ timeline: auTimeline.filter((_, j) => j !== i) }));
           }}>삭제</button>
+        </div>,
+        document.body,
+      )}
+
+      {/* 질문 우클릭 메뉴 (v2.0 사용자 요청) — 여기서 골라야 확인 모달이 뜬다 */}
+      {qaCtx && createPortal(
+        <div className="ctx-menu on" style={{ left: qaCtx.x, top: qaCtx.y }} onClick={e => e.stopPropagation()}>
+          <div className="ctx-ttl">Q.{String(qaCtx.no).padStart(3, '0')}</div>
+          <button className="danger" onClick={() => {
+            const q = auQuestions.find(x => x.no === qaCtx.no);
+            setQaCtx(null);
+            if (q) returnQuestion(q);
+          }}>리스트로 되돌리기</button>
         </div>,
         document.body,
       )}

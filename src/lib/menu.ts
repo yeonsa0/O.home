@@ -43,7 +43,6 @@ export const DEFAULT_MENU: MenuItem[] = [
     label: '게시판',
     children: [
       { label: '리스트', href: '/board' },
-      { label: '그림판', href: '/board?b=paint' },
       { label: '갤러리', href: '/gallery' },
       { label: '로드비', href: '/loadb' },
     ],
