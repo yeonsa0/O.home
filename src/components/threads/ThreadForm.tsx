@@ -17,14 +17,20 @@ export function ThreadForm({ editId }: { editId?: string }) {
   const router = useRouter();
   const toast = useToast();
   const [works, setWorks, loaded] = useLocalList<ThreadWork>('ohome.threads.v1', THREAD_SEED);
+
+  // 수정 모드인데 아직 데이터 로딩이 안 끝났다면 안전하게 대기
+  if (editId && !loaded) {
+    return <div style={{ textAlign: 'center', padding: 40, color: 'var(--text)' }}>불러오는 중...</div>;
+  }
+
   // 어느 감상타래에서 눌러 왔는지 (v2.0)
   const sec = useSectionParam('threads');
   const [settings] = useThreadSettings();
   const { fonts, familyOf } = useFonts();
   const orig = editId ? works.find(w => w.id === editId) : undefined;
   /* **수정 중이면 그 글이 속한 곳이 기준이다** (v2.0 사용자 발견 — 포크 사용자 제보).
-     수정 주소에는 `?s=`가 없어서 주소만 보면 늘 기본 섹션으로 읽힌다. 그러면 분류 목록이
-     기본 섹션 것으로 바뀌어, 원래 고른 분류가 목록에 없으니 첫 항목으로 풀려 버린다. */
+      수정 주소에는 `?s=`가 없어서 주소만 보면 늘 기본 섹션으로 읽힌다. 그러면 분류 목록이
+      기본 섹션 것으로 바뀌어, 원래 고른 분류가 목록에 없으니 첫 항목으로 풀려 버린다. */
   const secId = orig ? (orig.secId ?? MAIN_SEC) : sec.id;
   // 분류는 섹션마다 따로 (v2.0 사용자 요청)
   const cats = threadCats(settings, secId);
@@ -35,8 +41,8 @@ export function ThreadForm({ editId }: { editId?: string }) {
   const [role, setRole] = useState(orig?.authorRole ?? '');
   const [catId, setCatId] = useState(orig?.catId ?? cats[0]?.id ?? 'book');
   /* 섹션 목록은 한 박자 늦게 읽힌다 — 처음 렌더에서는 기본 섹션으로 보여 첫 분류가
-     이 타래에 없는 것으로 잡힐 수 있다(분류 칸이 「선택」인 채로 남았다).
-     **새로 쓸 때만** 목록 안의 것으로 맞춘다 — 수정 중인 글의 분류를 말없이 바꾸면 안 된다. */
+      이 타래에 없는 것으로 잡힐 수 있다(분류 칸이 「선택」인 채로 남았다).
+      **새로 쓸 때만** 목록 안의 것으로 맞춘다 — 수정 중인 글의 분류를 말없이 바꾸면 안 된다. */
   useEffect(() => {
     if (!orig && cats.length > 0 && !cats.some(c => c.id === catId)) setCatId(cats[0].id);
   }, [cats, orig, catId]);
