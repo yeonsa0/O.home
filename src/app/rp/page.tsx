@@ -317,7 +317,7 @@ ${rows}
   const speakerChar = rpChars.find(c => c.id === speaker);
 
   return (
-    <section className={`page ${mFocus ? 'rp-focus' : ''}`}>
+    <section className={`page page-rp ${mFocus ? 'rp-focus' : ''}`}>
       <div className="page-head">
         <PageTitle>ROLEPLAY</PageTitle>
         <EditableDesc k="rp-desc" def="실시간 채팅형 · 참여자에게만 존재 노출 · 캐릭터 선택 발화" />
@@ -480,7 +480,9 @@ ${rows}
         </div>
 
         {/* 우측 상태 필터 — 진행중/완결 따로 보기 */}
-        <div className="panel tagside" style={{ padding: 16, alignSelf: 'start' }}>
+        {/* align-self는 CSS로 — PC 그리드에선 start(위 정렬), 모바일 세로 배치에선 stretch(전폭).
+            인라인 start가 남아 있으면 모바일에서 내용 폭만큼 쪼그라든다 (v2.0 사용자 제보) */}
+        <div className="panel tagside" style={{ padding: 16 }}>
           <h4>상태</h4>
           {/* 진행중이 기본 — 진행중 / 전체 / 완결 순 (사용자 확정) */}
           <div className={`tag ${fStatus === 'ongoing' ? 'on' : ''}`} onClick={() => setFStatus('ongoing')}>
