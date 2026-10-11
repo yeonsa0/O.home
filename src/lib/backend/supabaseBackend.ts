@@ -203,7 +203,14 @@ export async function createSupabaseBackend(
     },
 
     subscribe(coll, onChange) {
-      const ch = sb.channel(`ohome:${coll}`);
+      const topic = `ohome:${coll}`;
+      // 이미 등록된 동일 채널이 남아 있다면 해제 후 새로 등록
+      const existing = sb.getChannels().find(c => c.topic === topic || c.topic.includes(coll));
+      if (existing) {
+        void sb.removeChannel(existing);
+      }
+
+      const ch = sb.channel(topic);
       ch.on('postgres_changes', { event: '*', schema: 'public', table: coll }, () => onChange());
       ch.subscribe();
       return () => { void sb.removeChannel(ch); };
