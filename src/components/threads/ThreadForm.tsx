@@ -14,25 +14,16 @@ import { useToast } from '@/components/ui/Toast';
 const PHS = ['cool', 'warm', 'pale', 'red'];
 
 export function ThreadForm({ editId }: { editId?: string }) {
+  // 1. 모든 리액트 훅(Hooks)을 최상단에 고정 선언 (리액트 #310 에러 완전 차단)
   const router = useRouter();
   const toast = useToast();
   const [works, setWorks, loaded] = useLocalList<ThreadWork>('ohome.threads.v1', THREAD_SEED);
-
-  // 수정 모드인데 아직 데이터 로딩이 안 끝났다면 안전하게 대기
-  if (editId && !loaded) {
-    return <div style={{ textAlign: 'center', padding: 40, color: 'var(--text)' }}>불러오는 중...</div>;
-  }
-
-  // 어느 감상타래에서 눌러 왔는지 (v2.0)
   const sec = useSectionParam('threads');
   const [settings] = useThreadSettings();
   const { fonts, familyOf } = useFonts();
+
   const orig = editId ? works.find(w => w.id === editId) : undefined;
-  /* **수정 중이면 그 글이 속한 곳이 기준이다** (v2.0 사용자 발견 — 포크 사용자 제보).
-      수정 주소에는 `?s=`가 없어서 주소만 보면 늘 기본 섹션으로 읽힌다. 그러면 분류 목록이
-      기본 섹션 것으로 바뀌어, 원래 고른 분류가 목록에 없으니 첫 항목으로 풀려 버린다. */
   const secId = orig ? (orig.secId ?? MAIN_SEC) : sec.id;
-  // 분류는 섹션마다 따로 (v2.0 사용자 요청)
   const cats = threadCats(settings, secId);
 
   const [title, setTitle] = useState(orig?.title ?? '');
@@ -40,14 +31,7 @@ export function ThreadForm({ editId }: { editId?: string }) {
   const [author, setAuthor] = useState(orig?.author ?? '');
   const [role, setRole] = useState(orig?.authorRole ?? '');
   const [catId, setCatId] = useState(orig?.catId ?? cats[0]?.id ?? 'book');
-  /* 섹션 목록은 한 박자 늦게 읽힌다 — 처음 렌더에서는 기본 섹션으로 보여 첫 분류가
-      이 타래에 없는 것으로 잡힐 수 있다(분류 칸이 「선택」인 채로 남았다).
-      **새로 쓸 때만** 목록 안의 것으로 맞춘다 — 수정 중인 글의 분류를 말없이 바꾸면 안 된다. */
-  useEffect(() => {
-    if (!orig && cats.length > 0 && !cats.some(c => c.id === catId)) setCatId(cats[0].id);
-  }, [cats, orig, catId]);
   const [vis, setVis] = useState<ThreadWork['visibility']>(orig?.visibility ?? 'public');
-  // 포스터 (3:4) — 업로드 즉시 크롭 에디터 자동 오픈, 원본 무손실
   const [poster, setPoster] = useState<File | null>(null);
   const [posterUrl, setPosterUrl] = useState('');
   const [crop, setCrop] = useState<CropValue | undefined>(orig?.posterCrop);
@@ -55,10 +39,12 @@ export function ThreadForm({ editId }: { editId?: string }) {
   const posterRef = useRef<HTMLInputElement>(null);
   const origUrl = useBlobUrl(orig?.posterId);
   const previewUrl = posterUrl || origUrl;
-
-  // 수정 모드 — 저장본은 mount 후에 로드되므로, 로드가 끝나면 폼을 한 번 채움
-  // (첫 렌더 시점엔 시드뿐이라 직접 등록한 타래는 폼이 비어 있던 버그 수정 — TCharForm과 동일 패턴)
   const hydrated = useRef(false);
+
+  useEffect(() => {
+    if (!orig && cats.length > 0 && !cats.some(c => c.id === catId)) setCatId(cats[0].id);
+  }, [cats, orig, catId]);
+
   useEffect(() => {
     if (!editId || !loaded || hydrated.current) return;
     const o = works.find(w => w.id === editId);
@@ -70,6 +56,11 @@ export function ThreadForm({ editId }: { editId?: string }) {
     setCrop(o.posterCrop);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editId, loaded, works]);
+
+  // 2. 모든 훅이 실행된 후에 조기 리턴 처리
+  if (editId && !loaded) {
+    return <div style={{ textAlign: 'center', padding: 40, color: 'var(--text)' }}>불러오는 중...</div>;
+  }
 
   const save = async () => {
     if (!title.trim()) { toast('작품명을 입력해 주세요'); return; }
@@ -120,7 +111,6 @@ export function ThreadForm({ editId }: { editId?: string }) {
             </div>
             <div style={{ width: 140 }}>
               <KLabel>Role (optional)</KLabel>
-              {/* 이름 뒤 옅은 표기 — 감독·작가 등 */}
               <KInput value={role} onChange={e => setRole(e.target.value)} />
             </div>
           </div>
