@@ -130,7 +130,7 @@ function ThreadsPageInner() {
 
   // 이어쓰기 컴포저 (관리자)
   const [text, setText] = useState('');
-  const [foldType, setFoldType] = useState<FoldPick>('none');       // 접기 (v2.0 스포일러 쿠션)
+  const [foldType, setFoldType] = useState<FoldPick>('none');        // 접기 (v2.0 스포일러 쿠션)
   const [foldLabel, setFoldLabel] = useState('');
   const [files, setFiles] = useState<File[]>([]);
   const [urls, setUrls] = useState<string[]>([]);
@@ -163,7 +163,7 @@ function ThreadsPageInner() {
   // 글 수정 모달 — 텍스트 + 첨부 이미지 관리 (총 4장 제한)
   const [epId, setEpId] = useState<string | null>(null);
   const [epText, setEpText] = useState('');
-  const [epFoldType, setEpFoldType] = useState<FoldPick>('none');   // 접기 (v2.0)
+  const [epFoldType, setEpFoldType] = useState<FoldPick>('none');    // 접기 (v2.0)
   const [epFoldLabel, setEpFoldLabel] = useState('');
   const [epKeep, setEpKeep] = useState<string[]>([]);   // 유지할 기존 이미지 id
   const [epPh, setEpPh] = useState<string[]>([]);       // 유지할 데모 플레이스홀더 (시드)
@@ -478,53 +478,57 @@ function ThreadsPageInner() {
           </div>
         </div>
       )}
-      {/* 글 수정 모달 — 텍스트 + 이미지 관리 (4장 제한) */}
-      <Modal open={epId !== null} onClose={() => setEpId(null)} title="글 수정" dirty
-        actions={<>
-          <button className="btn btn-ghost" onClick={() => setEpId(null)}>CANCEL</button>
-          <button className="btn btn-dark" onClick={saveEdit}>SAVE</button>
-        </>}>
-        <div style={{ display: 'grid', gap: 10 }}>
-          <KTextarea style={{ minHeight: 120 }} value={epText} onChange={e => setEpText(e.target.value)} />
-          {/* 접기 (v2.0 스포일러 쿠션) — 컴포저와 같은 선택지 */}
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <KSelect minWidth={140} value={epFoldType} onChange={v => setEpFoldType(v as FoldPick)} options={FOLD_OPTIONS} />
-            {epFoldType === 'custom' && (
-              <KInput placeholder="접기 문구" value={epFoldLabel} onChange={e => setEpFoldLabel(e.target.value)} style={{ flex: 1 }} />
-            )}
-          </div>
-          {(epCount > 0) && (
-            <div className="thr-att" style={{ padding: 0 }}>
-              {epKeep.map(id => (
-                <KeepThumb key={id} id={id} onRemove={() => setEpKeep(epKeep.filter(x => x !== id))} />
-              ))}
-              {epPh.map((ph, i) => (
-                <div key={`ph${i}`} className={`at ph ${ph}`}>
-                  <button onClick={() => setEpPh(epPh.filter((_, x) => x !== i))}>✕</button>
-                </div>
-              ))}
-              {epUrls.map((u, i) => (
-                <div key={u} className="at">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={u} alt="" />
-                  <button onClick={() => {
-                    const next = epFiles.filter((_, x) => x !== i);
-                    setEpFiles(next);
-                    setEpUrls(next.map(f => URL.createObjectURL(f)));
-                  }}>✕</button>
-                </div>
-              ))}
+
+      {/* 글 수정 모달 — epId가 존재할 때만 새로 마운트하여 리액트 #310 훅 에러 완전 차단 */}
+      {epId !== null && (
+        <Modal open={true} onClose={() => setEpId(null)} title="글 수정" dirty
+          actions={<>
+            <button className="btn btn-ghost" onClick={() => setEpId(null)}>CANCEL</button>
+            <button className="btn btn-dark" onClick={saveEdit}>SAVE</button>
+          </>}>
+          <div style={{ display: 'grid', gap: 10 }}>
+            <KTextarea style={{ minHeight: 120 }} value={epText} onChange={e => setEpText(e.target.value)} />
+            {/* 접기 (v2.0 스포일러 쿠션) — 컴포저와 같은 선택지 */}
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <KSelect minWidth={140} value={epFoldType} onChange={v => setEpFoldType(v as FoldPick)} options={FOLD_OPTIONS} />
+              {epFoldType === 'custom' && (
+                <KInput placeholder="접기 문구" value={epFoldLabel} onChange={e => setEpFoldLabel(e.target.value)} style={{ flex: 1 }} />
+              )}
             </div>
-          )}
-          <div>
-            <input ref={epImgRef} type="file" accept="image/*" multiple style={{ display: 'none' }}
-              onChange={e => { epAddFiles(e.target.files); e.target.value = ''; }} />
-            <button className="icobtn" data-tip="사진 추가 (최대 4장)" onClick={() => epImgRef.current?.click()}>
-              <PhotoIcon />
-            </button>
+            {(epCount > 0) && (
+              <div className="thr-att" style={{ padding: 0 }}>
+                {epKeep.map(id => (
+                  <KeepThumb key={id} id={id} onRemove={() => setEpKeep(epKeep.filter(x => x !== id))} />
+                ))}
+                {epPh.map((ph, i) => (
+                  <div key={`ph${i}`} className={`at ph ${ph}`}>
+                    <button onClick={() => setEpPh(epPh.filter((_, x) => x !== i))}>✕</button>
+                  </div>
+                ))}
+                {epUrls.map((u, i) => (
+                  <div key={u} className="at">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={u} alt="" />
+                    <button onClick={() => {
+                      const next = epFiles.filter((_, x) => x !== i);
+                      setEpFiles(next);
+                      setEpUrls(next.map(f => URL.createObjectURL(f)));
+                    }}>✕</button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div>
+              <input ref={epImgRef} type="file" accept="image/*" multiple style={{ display: 'none' }}
+                onChange={e => { epAddFiles(e.target.files); e.target.value = ''; }} />
+              <button className="icobtn" data-tip="사진 추가 (최대 4장)" onClick={() => epImgRef.current?.click()}>
+                <PhotoIcon />
+              </button>
+            </div>
           </div>
-        </div>
-      </Modal>
+        </Modal>
+      )}
+
       {/* 타래 우클릭 메뉴 (v2.0 사용자 요청) — 여기서 골라야 삭제 확인 모달이 뜬다.
           카드에 hover transform이 있어 fixed 위치가 어긋나지 않게 body로 포탈 */}
       {wCtx && createPortal(
