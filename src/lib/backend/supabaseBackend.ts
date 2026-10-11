@@ -203,13 +203,8 @@ export async function createSupabaseBackend(
     },
 
     subscribe(coll, onChange) {
-      const topic = `ohome:${coll}`;
-      // 이미 등록된 동일 채널이 남아 있다면 해제 후 새로 등록
-      const existing = sb.getChannels().find(c => c.topic === topic || c.topic.includes(coll));
-      if (existing) {
-        void sb.removeChannel(existing);
-      }
-
+      // 고유 식별값을 부여해 채널 충돌 및 #310 에러를 완전 차단
+      const topic = `ohome:${coll}:${Math.random().toString(36).slice(2, 9)}`;
       const ch = sb.channel(topic);
       ch.on('postgres_changes', { event: '*', schema: 'public', table: coll }, () => onChange());
       ch.subscribe();
